@@ -5,26 +5,26 @@ import (
 	"sync"
 )
 
-// Jorm base struct
-type Jorm struct {
+// Norm base struct
+type Norm struct {
 	models map[reflect.Type]*Model
 	mut    sync.Mutex
 }
 
-// NewJorm creates a new Jorm instance
-func NewJorm() *Jorm {
-	return &Jorm{}
+// NewNorm creates a new Norm instance
+func NewNorm() *Norm {
+	return &Norm{}
 }
 
 // AddModels adds several models to models cache
-func (orm *Jorm) AddModels(objs ...any) {
+func (orm *Norm) AddModels(objs ...any) {
 	for _, obj := range objs {
 		orm.AddModel(obj)
 	}
 }
 
 // AddModel adds model to models cache
-func (orm *Jorm) AddModel(obj any) *Model {
+func (orm *Norm) AddModel(obj any) *Model {
 	model := NewModel()
 
 	err := model.Parse(obj)
@@ -48,7 +48,7 @@ func (orm *Jorm) AddModel(obj any) *Model {
 // obj must be a pointer to a struct.
 //
 // If Model for the object was not found in the cache, then a new model is created and added to the cache.
-func (orm *Jorm) M(obj any) *Model {
+func (orm *Norm) M(obj any) *Model {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
 		panic("obj must be pointer to struct")
