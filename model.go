@@ -1,26 +1,29 @@
-package jorm
+package norm
 
 import (
 	"errors"
 	"fmt"
 	"github.com/iancoleman/strcase"
-	"log"
 	"reflect"
 	"strings"
 )
 
+// Model a struct to cache your struct reflect data
 type Model struct {
-	valType reflect.Type
-	fields  []*Field
-
+	valType         reflect.Type
+	fields          []*Field
 	fieldByJSONName map[string]*Field
 	fieldByDbName   map[string]*Field
+
+	currentObject any
 }
 
+// NewModel creates a new Model instance
 func NewModel() *Model {
 	return &Model{}
 }
 
+// Parse parses a obj struct fields and save it to Model
 func (m *Model) Parse(obj any) error {
 	val := reflect.Indirect(reflect.ValueOf(obj))
 	if val.Kind() != reflect.Struct {
@@ -57,7 +60,9 @@ func (m *Model) Parse(obj any) error {
 	return nil
 }
 
-func (m *Model) FieldDbNames(exclude, prefix string) []string {
+// DbNames returns slice of fields database names with prefix in snake-case, excluding
+// specified in the parameter exclude
+func (m *Model) DbNames(exclude, prefix string) []string {
 	excludeArr := strings.Split(exclude, ",")
 
 	res := make([]string, 0)
@@ -72,7 +77,9 @@ func (m *Model) FieldDbNames(exclude, prefix string) []string {
 	return res
 }
 
-func (m *Model) FieldDbNamesWithBinds(exclude string) []string {
+// DbNamesWithBinds returns slice of fields database names in snake-case
+// in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude
+func (m *Model) DbNamesWithBinds(exclude string) []string {
 	excludeArr := strings.Split(exclude, ",")
 
 	bind := 1
@@ -89,10 +96,11 @@ func (m *Model) FieldDbNamesWithBinds(exclude string) []string {
 	return res
 }
 
-func (m *Model) FieldPointers(obj any, exclude string) []any {
-	val := reflect.ValueOf(obj)
+// Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
+func (m *Model) Pointers(exclude string) []any {
+	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
-		log.Fatal("FieldPointers: object must be a pointer to struct")
+		panic("FieldPointers: object must be a pointer to struct")
 	}
 
 	val = val.Elem()
@@ -111,10 +119,11 @@ func (m *Model) FieldPointers(obj any, exclude string) []any {
 	return res
 }
 
-func (m *Model) FieldValues(obj any, exclude string) []any {
-	val := reflect.ValueOf(obj)
+// Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
+func (m *Model) Values(exclude string) []any {
+	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
-		log.Fatal("FieldValues: object must be a pointer to struct")
+		panic("FieldValues: object must be a pointer to struct")
 	}
 
 	val = val.Elem()

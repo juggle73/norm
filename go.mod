@@ -1,4 +1,4 @@
-module github.com/juggle73/jorm
+module github.com/juggle73/norm
 
 go 1.19
 
