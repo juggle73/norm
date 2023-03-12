@@ -1,4 +1,4 @@
-package jorm
+package norm
 
 import (
 	"fmt"
@@ -20,6 +20,7 @@ type conditionBuilder struct {
 	field      *Field
 }
 
+// BuildConditions builds sql WHERE conditions and return them with bind values
 func (m *Model) BuildConditions(obj map[string]any) ([]string, []any) {
 
 	builder := conditionBuilder{

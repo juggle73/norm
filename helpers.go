@@ -1,4 +1,4 @@
-package jorm
+package norm
 
 import (
 	"fmt"
@@ -7,10 +7,12 @@ import (
 	"strings"
 )
 
+// isPointerToStruct checks is reflect.Value is pointer to struct
 func isPointerToStruct(v reflect.Value) bool {
 	return v.Kind() == reflect.Pointer && v.Elem().Kind() == reflect.Struct
 }
 
+// has checks is there a value val in slice a
 func has(a []string, val string) int {
 	for i := range a {
 		if strings.TrimSpace(a[i]) == val {
@@ -20,7 +22,8 @@ func has(a []string, val string) int {
 	return -1
 }
 
-func binds(count int) string {
+// Binds generates sql binds string in "$1, $2, ..." format
+func Binds(count int) string {
 	if count == 0 {
 		return ""
 	}
@@ -61,6 +64,7 @@ func parseOrmTag(field reflect.StructField) ([]string, bool) {
 	return res, true
 }
 
+// indirectType returns the type that v points to.
 func indirectType(v reflect.Type) reflect.Type {
 	for v.Kind() == reflect.Pointer {
 		v = v.Elem()
