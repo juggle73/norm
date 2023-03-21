@@ -13,13 +13,13 @@ func isPointerToStruct(v reflect.Value) bool {
 }
 
 // has checks is there a value val in slice a
-func has(a []string, val string) int {
+func has(a []string, val string) bool {
 	for i := range a {
 		if strings.TrimSpace(a[i]) == val {
-			return i
+			return true
 		}
 	}
-	return -1
+	return false
 }
 
 // Binds generates sql binds string in "$1, $2, ..." format
@@ -35,30 +35,32 @@ func Binds(count int) string {
 	return str
 }
 
-func parseOrmTag(field reflect.StructField) ([]string, bool) {
-	res := make([]string, 1)
+func parseNormTag(field reflect.StructField) (map[string]string, bool) {
+	res := make(map[string]string)
 
-	ormTag, ok := field.Tag.Lookup("orm")
+	ormTag, ok := field.Tag.Lookup("norm")
 	ormTag = strings.TrimSpace(ormTag)
 	if ormTag == "-" {
 		return nil, false
 	}
 	if !ok || ormTag == "" {
-		res[0] = strcase.ToSnake(field.Name)
+		res["dbName"] = strcase.ToSnake(field.Name)
 		return res, true
 	}
 
 	entries := strings.Split(ormTag, ",")
 	for i := range entries {
-		if i == 0 {
-			if entries[i] == "" {
-				res[0] = strcase.ToSnake(field.Name)
-			} else {
-				res[0] = entries[i]
-			}
-		} else {
-			res = append(res, entries[i])
+		kv := strings.Split(entries[i], "=")
+		if len(kv) == 1 {
+			res[entries[i]] = ""
+		} else if len(kv) == 2 {
+			res[kv[0]] = kv[1]
 		}
+	}
+
+	// Add default name if not exist
+	if _, ok := res["dbName"]; !ok {
+		res["dbName"] = strcase.ToSnake(field.Name)
 	}
 
 	return res, true

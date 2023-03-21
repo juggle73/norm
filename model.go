@@ -15,12 +15,17 @@ type Model struct {
 	fieldByJSONName map[string]*Field
 	fieldByDbName   map[string]*Field
 
+	config        *Config
 	currentObject any
+	pk            []string
+	unique        []string
 }
 
 // NewModel creates a new Model instance
-func NewModel() *Model {
-	return &Model{}
+func NewModel(config *Config) *Model {
+	return &Model{
+		config: config,
+	}
 }
 
 // Parse parses a obj struct fields and save it to Model
@@ -40,7 +45,7 @@ func (m *Model) Parse(obj any) error {
 	for i := 0; i < c; i++ {
 		f := val.Type().Field(i)
 
-		tagValues, ok := parseOrmTag(f)
+		tagValues, ok := parseNormTag(f)
 		if !ok {
 			continue
 		}
@@ -48,7 +53,7 @@ func (m *Model) Parse(obj any) error {
 		field := &Field{
 			valType:   f.Type,
 			name:      f.Name,
-			dbName:    tagValues[0],
+			dbName:    tagValues["dbName"],
 			tagValues: tagValues,
 		}
 
@@ -67,7 +72,7 @@ func (m *Model) DbNames(exclude, prefix string) []string {
 
 	res := make([]string, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) >= 0 {
+		if has(excludeArr, f.dbName) {
 			continue
 		}
 
@@ -85,7 +90,7 @@ func (m *Model) DbNamesWithBinds(exclude string) []string {
 	bind := 1
 	res := make([]string, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) >= 0 {
+		if has(excludeArr, f.dbName) {
 			continue
 		}
 
@@ -109,7 +114,7 @@ func (m *Model) Pointers(exclude string) []any {
 
 	res := make([]any, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) >= 0 {
+		if has(excludeArr, f.dbName) {
 			continue
 		}
 
@@ -132,7 +137,7 @@ func (m *Model) Values(exclude string) []any {
 
 	res := make([]any, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) >= 0 {
+		if has(excludeArr, f.dbName) {
 			continue
 		}
 
