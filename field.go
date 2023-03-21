@@ -7,5 +7,5 @@ type Field struct {
 	valType   reflect.Type
 	name      string
 	dbName    string
-	tagValues []string
+	tagValues map[string]string
 }
