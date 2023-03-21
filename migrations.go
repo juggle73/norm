@@ -35,7 +35,7 @@ func (m *Model) CreateSQL(table string) string {
 			fmt.Sprintf("CONSTRAINT unique_%s_%s UNIQUE(%s)", table, uField, uField))
 	}
 
-	sql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s {
+	sql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 	%s
 )`, table, strings.Join(fields, ",\n\t"))
 
