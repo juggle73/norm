@@ -146,3 +146,14 @@ func (m *Model) Values(exclude string) []any {
 
 	return res
 }
+
+// CreateSQL returns INSERT clause for Model
+func (m *Model) CreateSQL(table, exclude string) string {
+	dbNames := m.DbNames(exclude, "")
+
+	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
+		table,
+		strings.Join(dbNames, ", "),
+		Binds(len(dbNames)),
+	)
+}

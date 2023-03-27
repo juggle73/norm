@@ -15,8 +15,8 @@ var dbTypes = map[reflect.Kind]string{
 	reflect.Bool:  "boolean",
 }
 
-// CreateSQL generates CREATE TABLE sql expression for Model
-func (m *Model) CreateSQL(table string) string {
+// CreateTableSQL generates CREATE TABLE sql expression for Model
+func (m *Model) CreateTableSQL(table string) string {
 	m.pk = make([]string, 0)
 	m.unique = make([]string, 0)
 
