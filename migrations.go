@@ -16,7 +16,7 @@ var dbTypes = map[reflect.Kind]string{
 }
 
 // CreateTableSQL generates CREATE TABLE sql expression for Model
-func (m *Model) CreateTableSQL(table string) string {
+func (m *Model) CreateTableSQL() string {
 	m.pk = make([]string, 0)
 	m.unique = make([]string, 0)
 
@@ -28,16 +28,16 @@ func (m *Model) CreateTableSQL(table string) string {
 
 	if len(m.pk) > 0 {
 		fields = append(fields,
-			fmt.Sprintf("CONSTRAINT %s_pkey PRIMARY KEY(%s)", table, strings.Join(m.pk, ", ")))
+			fmt.Sprintf("CONSTRAINT %s_pkey PRIMARY KEY(%s)", m.table, strings.Join(m.pk, ", ")))
 	}
 	for _, uField := range m.unique {
 		fields = append(fields,
-			fmt.Sprintf("CONSTRAINT unique_%s_%s UNIQUE(%s)", table, uField, uField))
+			fmt.Sprintf("CONSTRAINT unique_%s_%s UNIQUE(%s)", m.table, uField, uField))
 	}
 
 	sql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 	%s
-)`, table, strings.Join(fields, ",\n\t"))
+)`, m.table, strings.Join(fields, ",\n\t"))
 
 	return sql
 }

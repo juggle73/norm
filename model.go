@@ -10,10 +10,12 @@ import (
 
 // Model a struct to cache your struct reflect data
 type Model struct {
-	valType         reflect.Type
-	fields          []*Field
-	fieldByJSONName map[string]*Field
-	fieldByDbName   map[string]*Field
+	table   string
+	valType reflect.Type
+	fields  []*Field
+	//fieldByJSONName map[string]*Field
+	//fieldByDbName   map[string]*Field
+	fieldByAnyName map[string]*Field
 
 	config        *Config
 	currentObject any
@@ -28,16 +30,22 @@ func NewModel(config *Config) *Model {
 	}
 }
 
-// Parse parses a obj struct fields and save it to Model
-func (m *Model) Parse(obj any) error {
+// Parse parses an obj struct fields and save it to Model
+func (m *Model) Parse(obj any, table string) error {
 	val := reflect.Indirect(reflect.ValueOf(obj))
 	if val.Kind() != reflect.Struct {
 		return errors.New("object must be a struct or pointer to struct")
 	}
 
+	if table == "" {
+		m.table = strcase.ToSnake(val.Type().Name())
+	} else {
+		m.table = table
+	}
 	m.fields = make([]*Field, 0)
-	m.fieldByJSONName = make(map[string]*Field)
-	m.fieldByDbName = make(map[string]*Field)
+	//m.fieldByJSONName = make(map[string]*Field)
+	//m.fieldByDbName = make(map[string]*Field)
+	m.fieldByAnyName = make(map[string]*Field)
 
 	m.valType = val.Type()
 
@@ -58,8 +66,9 @@ func (m *Model) Parse(obj any) error {
 		}
 
 		m.fields = append(m.fields, field)
-		m.fieldByJSONName[strcase.ToLowerCamel(field.name)] = field
-		m.fieldByDbName[field.dbName] = field
+		m.fieldByAnyName[strcase.ToLowerCamel(field.name)] = field
+		m.fieldByAnyName[field.dbName] = field
+		m.fieldByAnyName[field.name] = field
 	}
 
 	return nil
@@ -145,15 +154,4 @@ func (m *Model) Values(exclude string) []any {
 	}
 
 	return res
-}
-
-// CreateSQL returns INSERT clause for Model
-func (m *Model) CreateSQL(table, exclude string) string {
-	dbNames := m.DbNames(exclude, "")
-
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
-		table,
-		strings.Join(dbNames, ", "),
-		Binds(len(dbNames)),
-	)
 }

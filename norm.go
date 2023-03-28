@@ -30,18 +30,11 @@ func NewNorm(config *Config) *Norm {
 	return norm
 }
 
-// AddModels adds several models to models cache
-func (norm *Norm) AddModels(objs ...any) {
-	for _, obj := range objs {
-		norm.AddModel(obj)
-	}
-}
-
 // AddModel adds model to models cache
-func (norm *Norm) AddModel(obj any) *Model {
+func (norm *Norm) AddModel(obj any, table string) *Model {
 	model := NewModel(norm.config)
 
-	err := model.Parse(obj)
+	err := model.Parse(obj, table)
 	if err != nil {
 		panic(err)
 	}
@@ -69,7 +62,7 @@ func (norm *Norm) M(obj any) *Model {
 	}
 	model, ok := norm.models[val.Elem().Type()]
 	if !ok {
-		model = norm.AddModel(obj)
+		model = norm.AddModel(obj, "")
 	}
 
 	model.currentObject = obj
