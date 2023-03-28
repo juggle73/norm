@@ -29,7 +29,7 @@ func (m *Model) BuildConditions(obj map[string]any) ([]string, []any) {
 	}
 
 	for k, v := range obj {
-		mField, ok := m.fieldByJSONName[k]
+		mField, ok := m.fieldByAnyName[k]
 		if !ok {
 			continue
 		}
