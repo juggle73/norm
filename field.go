@@ -9,3 +9,9 @@ type Field struct {
 	dbName    string
 	tagValues map[string]string
 }
+
+func (f *Field) hasTag(tag string) bool {
+	_, ok := f.tagValues[tag]
+
+	return ok
+}
