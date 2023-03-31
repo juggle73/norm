@@ -52,7 +52,7 @@ func (norm *Norm) AddModel(obj any, table string) *Model {
 
 // M returns *Model for object
 //
-// obj must be a pointer to a struct.
+//	obj - must be a pointer to a struct.
 //
 // If Model for the object was not found in the cache, then a new model is created and added to the cache.
 func (norm *Norm) M(obj any) *Model {
