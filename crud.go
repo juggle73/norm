@@ -75,7 +75,7 @@ func (m *Model) UpdateSQL(data []byte, where, returning string) (sql string, bin
 
 	for k, v := range dataObj {
 		f := m.fieldByAnyName[k]
-		if f == nil {
+		if f == nil || f.hasTag("noupdate") {
 			continue
 		}
 		val := reflect.ValueOf(m.currentObject).Elem()
