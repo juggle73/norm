@@ -27,7 +27,7 @@ func (m *Model) CreateSQL(exclude, returning string) string {
 	return sql
 }
 
-// ReadSQL generates SELECT statement with conditions and return statement and binds
+// ReadSQL generates SELECT statement with conditions and return statement and binds for Scan(...)
 //
 //	where - string containing conditions, e.g. "id=?"
 func (m *Model) ReadSQL(where string) (string, []any) {
@@ -54,7 +54,7 @@ func (m *Model) ReadSQL(where string) (string, []any) {
 // UpdateSQL generates UPDATE SQL statement
 //
 //	data - stringified JSON object with new values
-func (m *Model) UpdateSQL(data []byte, where, returning string) (sql string, binds []any, err error) {
+func (m *Model) UpdateSQL(data []byte, where, returning string, whereBinds ...any) (sql string, binds []any, err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -105,6 +105,7 @@ func (m *Model) UpdateSQL(data []byte, where, returning string) (sql string, bin
 
 	if where != "" {
 		sql = fmt.Sprintf("%s WHERE %s", sql, where)
+		binds = append(binds, whereBinds...)
 	}
 	if returning != "" {
 		sql = fmt.Sprintf("%s RETURNING %s", sql, returning)
