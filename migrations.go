@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// dbTypes is map of PostgreSQL types for reflect.Kind
+// dbTypes is map of some reflect.Kind to PostgreSQL types
 var dbTypes = map[reflect.Kind]string{
 	reflect.Int64: "bigint",
 	reflect.Int:   "integer",
@@ -42,6 +42,41 @@ func (m *Model) CreateTableSQL() string {
 	return sql
 }
 
+// Migrate compares db field names with model fields and generates SQL statements to create missing table fields
+//
+//	Important! Migrate does not support field deletion and field data type change
+func (m *Model) Migrate(dbFieldNames []string) []string {
+	m.pk = make([]string, 0)
+	m.unique = make([]string, 0)
+
+	statements := make([]string, 0)
+
+	// New table
+	if dbFieldNames == nil || len(dbFieldNames) == 0 {
+		statements = append(statements, m.CreateTableSQL())
+		return statements
+	}
+
+	for _, f := range m.fields {
+		if !has(dbFieldNames, f.dbName) {
+			sql := fmt.Sprintf("ALTER TABLE %s ADD %s", m.table, m.fieldCreate(f.valType, f))
+			statements = append(statements, sql)
+		}
+	}
+
+	if len(m.pk) > 0 {
+		sql := fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s)", m.table, strings.Join(m.pk, ", "))
+		statements = append(statements, sql)
+	}
+	for _, uField := range m.unique {
+		sql := fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT unique_%s_%s UNIQUE (%s)",
+			m.table, m.table, uField, uField)
+		statements = append(statements, sql)
+	}
+
+	return statements
+}
+
 // fieldCreate creates a sql for field
 func (m *Model) fieldCreate(t reflect.Type, f *Field) string {
 	res := ""
@@ -66,7 +101,7 @@ func (m *Model) fieldCreate(t reflect.Type, f *Field) string {
 		default:
 			dt, ok = dbTypes[t.Kind()]
 			if !ok {
-				panic("fieldCreate: invalid data type: " + t.Kind().String())
+				dt = fmt.Sprintf("<not supported type %s>", t.Kind().String())
 			}
 		}
 	}

@@ -10,9 +10,8 @@ import (
 
 // CreateSQL returns INSERT clause for Model
 //
-// exclude - exclude fields comma-separated list
-//
-// returning - comma-separated list of returning fields
+//	exclude - exclude fields comma-separated list
+//	returning - comma-separated list of returning fields
 func (m *Model) CreateSQL(exclude, returning string) string {
 	dbNames := m.DbNames(exclude, "")
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
@@ -30,7 +29,7 @@ func (m *Model) CreateSQL(exclude, returning string) string {
 
 // ReadSQL generates SELECT statement with conditions and return statement and binds
 //
-// where - string containing conditions, e.g. "id=?"
+//	where - string containing conditions, e.g. "id=?"
 func (m *Model) ReadSQL(where string) (string, []any) {
 	sql := fmt.Sprintf("SELECT %s FROM %s",
 		strings.Join(m.DbNames("", ""), ", "),
@@ -54,7 +53,7 @@ func (m *Model) ReadSQL(where string) (string, []any) {
 
 // UpdateSQL generates UPDATE SQL statement
 //
-// data - stringified JSON object with new values
+//	data - stringified JSON object with new values
 func (m *Model) UpdateSQL(data []byte, where, returning string) (sql string, binds []any, err error) {
 
 	defer func() {
