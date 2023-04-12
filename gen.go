@@ -12,8 +12,8 @@ type Col struct {
 	Name                   string `json:"name"`
 	IsNullable             string
 	DataType               string
-	CharacterMaximumLength int
-	NumericPrecision       int
+	CharacterMaximumLength *int
+	NumericPrecision       *int
 }
 
 func (norm *Norm) Gen(structName string, cols []Col, outFile string) error {
