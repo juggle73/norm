@@ -9,16 +9,16 @@ import (
 //select column_name, is_nullable, data_type, character_maximum_length, numeric_precision from information_schema.columns where table_name='matches' order by ordinal_position;
 
 type Col struct {
-	Name                   string `json:"name"`
-	IsNullable             string
-	DataType               string
-	CharacterMaximumLength *int
-	NumericPrecision       *int
+	Name       string `json:"name"`
+	IsNullable string
+	DataType   string
 }
 
-func (norm *Norm) Gen(structName string, cols []Col, outFile string) error {
-	str := fmt.Sprintf(`type %s struct {
-`, structName)
+func (norm *Norm) Gen(packageName, structName string, cols []Col, outFile string) error {
+	str := fmt.Sprintf(`package %s
+
+type %s struct {
+`, packageName, structName)
 
 	for _, col := range cols {
 		pointerPrefix := ""
