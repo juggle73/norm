@@ -101,7 +101,7 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s IN (%s)", b.field.dbName, strings.Join(a, "', '"))
+		res = fmt.Sprintf("%s IN (%s)", b.field.dbName, strings.Join(a, ", "))
 	}
 
 	return res
