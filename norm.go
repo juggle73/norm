@@ -1,6 +1,7 @@
 package norm
 
 import (
+	"github.com/iancoleman/strcase"
 	"reflect"
 	"sync"
 )
@@ -65,7 +66,7 @@ func (norm *Norm) M(obj any) *Model {
 	}
 	model, ok := norm.models[val.Elem().Type()]
 	if !ok {
-		model = norm.AddModel(obj, "")
+		model = norm.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
 	}
 
 	model.currentObject = obj

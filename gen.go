@@ -43,7 +43,7 @@ type %s struct {
 				strcase.ToCamel(col.Name), "map[string]any", strcase.ToLowerCamel(col.Name))
 		case "bytea":
 			str += fmt.Sprintf("\t%s %s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), "[]byte]", strcase.ToLowerCamel(col.Name))
+				strcase.ToCamel(col.Name), "[]byte", strcase.ToLowerCamel(col.Name))
 		}
 	}
 
