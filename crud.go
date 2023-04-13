@@ -27,6 +27,50 @@ func (m *Model) CreateSQL(exclude, returning string) string {
 	return sql
 }
 
+// CreateFrom returns INSERT clause for Model based on object
+//
+//	data - stringified JSON object with values
+//	returning - comma-separated list of returning fields
+func (m *Model) CreateFrom(data []byte, returning string) (sql string, binds []any, err error) {
+
+	dataObj := make(map[string]any)
+
+	err = json.Unmarshal(data, &dataObj)
+	if err != nil {
+		return
+	}
+
+	fields := make([]string, 0)
+	binds = make([]any, 0)
+
+	for k, v := range dataObj {
+		f := m.fieldByAnyName[k]
+		if f == nil || f.hasTag("nocreate") {
+			continue
+		}
+		val := reflect.ValueOf(m.currentObject).Elem()
+		rField := val.FieldByName(f.name)
+		if rField.CanSet() {
+			rField.Set(reflect.ValueOf(v).Convert(rField.Type()))
+			fields = append(fields, f.dbName)
+			binds = append(binds, rField.Interface())
+		}
+
+	}
+
+	sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		m.table,
+		strings.Join(fields, ", "),
+		Binds(len(fields)),
+	)
+
+	if returning != "" {
+		sql = fmt.Sprintf("%s RETURNING %s", sql, returning)
+	}
+
+	return
+}
+
 // ReadSQL generates SELECT statement with conditions and return statement and binds for Scan(...)
 //
 //	where - string containing conditions, e.g. "id=?"
