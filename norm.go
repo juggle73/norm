@@ -8,6 +8,7 @@ import (
 // Norm base struct
 type Norm struct {
 	models map[reflect.Type]*Model
+	tables map[string]*Model
 	mut    sync.Mutex
 	config *Config
 }
@@ -41,11 +42,13 @@ func (norm *Norm) AddModel(obj any, table string) *Model {
 
 	if norm.models == nil {
 		norm.models = make(map[reflect.Type]*Model)
+		norm.tables = make(map[string]*Model)
 	}
 
 	norm.mut.Lock()
 	defer norm.mut.Unlock()
 	norm.models[model.valType] = model
+	norm.tables[table] = model
 
 	return model
 }
@@ -68,4 +71,8 @@ func (norm *Norm) M(obj any) *Model {
 	model.currentObject = obj
 
 	return model
+}
+
+func (norm *Norm) T(table string) *Model {
+	return norm.tables[table]
 }
