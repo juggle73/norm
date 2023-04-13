@@ -30,7 +30,7 @@ func (m *Model) CreateSQL(exclude, returning string) string {
 // ReadSQL generates SELECT statement with conditions and return statement and binds for Scan(...)
 //
 //	where - string containing conditions, e.g. "id=?"
-func (m *Model) ReadSQL(where string) (string, []any) {
+func (m *Model) ReadSQL(where string) string {
 	sql := fmt.Sprintf("SELECT %s FROM %s",
 		strings.Join(m.DbNames("", ""), ", "),
 		m.table)
@@ -48,7 +48,7 @@ func (m *Model) ReadSQL(where string) (string, []any) {
 		sql = fmt.Sprintf("%s WHERE %s", sql, where)
 	}
 
-	return sql, m.Pointers("")
+	return sql
 }
 
 // UpdateSQL generates UPDATE SQL statement
