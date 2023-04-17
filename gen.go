@@ -3,7 +3,6 @@ package norm
 import (
 	"fmt"
 	"github.com/iancoleman/strcase"
-	"os"
 )
 
 //select column_name, is_nullable, data_type, character_maximum_length, numeric_precision from information_schema.columns where table_name='matches' order by ordinal_position;
@@ -12,42 +11,57 @@ type Col struct {
 	Name       string `json:"name"`
 	IsNullable string
 	DataType   string
+	Pk         bool
 }
 
-func (norm *Norm) Gen(packageName, structName string, cols []Col, outFile string) error {
-	str := fmt.Sprintf(`package %s
-
-type %s struct {
-`, packageName, structName)
+func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
+	imports := make(map[string]bool)
+	structStr := fmt.Sprintf("type %s struct {\n", structName)
 
 	for _, col := range cols {
 		pointerPrefix := ""
 		if col.IsNullable == "YES" {
 			pointerPrefix = "*"
 		}
+		normTag := ""
+		if col.Pk {
+			normTag = " norm=\"pk\""
+		}
+		goType := ""
 		switch col.DataType {
 		case "bigint":
-			str += fmt.Sprintf("\t%s %s%s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), pointerPrefix, "int64", strcase.ToLowerCamel(col.Name))
+			goType = "int64"
 		case "integer":
-			str += fmt.Sprintf("\t%s %s%s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), pointerPrefix, "int", strcase.ToLowerCamel(col.Name))
+			goType = "int"
 		case "character varying":
-			str += fmt.Sprintf("\t%s %s%s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), pointerPrefix, "string", strcase.ToLowerCamel(col.Name))
-		case "timestamp with time zone", "date":
-			str += fmt.Sprintf("\t%s %s%s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), pointerPrefix, "time.Time", strcase.ToLowerCamel(col.Name))
+			goType = "string"
+		case "time", "timetz", "time with time zone", "timestamp", "timestamptz", "timestamp with time zone", "date":
+			goType = "time.Time"
+			imports["time"] = true
 		case "json", "jsonb":
-			str += fmt.Sprintf("\t%s %s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), "map[string]any", strcase.ToLowerCamel(col.Name))
+			goType = "map[string]any"
+			pointerPrefix = ""
 		case "bytea":
-			str += fmt.Sprintf("\t%s %s `json:\"%s\"`\n",
-				strcase.ToCamel(col.Name), "[]byte", strcase.ToLowerCamel(col.Name))
+			goType = "[]byte"
+			pointerPrefix = ""
 		}
+
+		structStr += fmt.Sprintf("\t%s %s%s `json:\"%s\"%s`\n",
+			strcase.ToCamel(col.Name), pointerPrefix, goType, strcase.ToLowerCamel(col.Name), normTag)
 	}
 
-	str += "}"
+	structStr += "}"
 
-	return os.WriteFile(outFile, []byte(str), os.ModePerm)
+	res := fmt.Sprintf("package %s\n\n", packageName)
+	if len(imports) > 0 {
+		res += "import (\n"
+		for k := range imports {
+			res = fmt.Sprintf("%s\"%s\"\n", res, k)
+		}
+		res += ")\n\n"
+	}
+
+	res += structStr
+
+	return res
 }
