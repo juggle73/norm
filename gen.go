@@ -35,6 +35,8 @@ func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
 			goType = "int"
 		case "character varying":
 			goType = "string"
+		case "boolean":
+			goType = "bool"
 		case "time", "timetz", "time with time zone", "timestamp", "timestamptz", "timestamp with time zone", "date":
 			goType = "time.Time"
 			imports["time"] = true
