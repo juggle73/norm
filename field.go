@@ -15,3 +15,8 @@ func (f *Field) hasTag(tag string) bool {
 
 	return ok
 }
+
+func (f *Field) Tag(tag string) (string, bool) {
+	val, ok := f.tagValues[tag]
+	return val, ok
+}
