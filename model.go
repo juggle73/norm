@@ -10,11 +10,9 @@ import (
 
 // Model a struct to cache your struct reflect data
 type Model struct {
-	table   string
-	valType reflect.Type
-	fields  []*Field
-	//fieldByJSONName map[string]*Field
-	//fieldByDbName   map[string]*Field
+	table          string
+	valType        reflect.Type
+	fields         []*Field
 	fieldByAnyName map[string]*Field
 
 	config        *Config
@@ -43,8 +41,6 @@ func (m *Model) Parse(obj any, table string) error {
 		m.table = table
 	}
 	m.fields = make([]*Field, 0)
-	//m.fieldByJSONName = make(map[string]*Field)
-	//m.fieldByDbName = make(map[string]*Field)
 	m.fieldByAnyName = make(map[string]*Field)
 
 	m.valType = val.Type()
@@ -162,4 +158,9 @@ func (m *Model) NewInstance() any {
 
 func (m *Model) Table() string {
 	return m.table
+}
+
+func (m *Model) FieldByName(name string) (*Field, bool) {
+	v, ok := m.fieldByAnyName[name]
+	return v, ok
 }

@@ -20,3 +20,11 @@ func (f *Field) Tag(tag string) (string, bool) {
 	val, ok := f.tagValues[tag]
 	return val, ok
 }
+
+func (f *Field) DbName() string {
+	return f.dbName
+}
+
+func (f *Field) Name() string {
+	return f.name
+}
