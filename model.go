@@ -159,3 +159,7 @@ func (m *Model) Values(exclude string) []any {
 func (m *Model) NewInstance() any {
 	return reflect.New(m.valType).Interface()
 }
+
+func (m *Model) Table() string {
+	return m.table
+}
