@@ -180,7 +180,7 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 			switch k.String() {
 			case "gt", "gte", "lt", "lte", "ne":
 				switch v.Elem().Kind() {
-				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				case reflect.String:
 					if res != "" {
 						res += " AND "
 					}
