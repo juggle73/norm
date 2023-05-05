@@ -1,6 +1,9 @@
 package norm
 
-import "reflect"
+import (
+	"github.com/iancoleman/strcase"
+	"reflect"
+)
 
 // Field struct representing struct field reflect attributes
 type Field struct {
@@ -27,4 +30,8 @@ func (f *Field) DbName() string {
 
 func (f *Field) Name() string {
 	return f.name
+}
+
+func (f *Field) JsonName() string {
+	return strcase.ToLowerCamel(f.name)
 }
