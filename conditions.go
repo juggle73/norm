@@ -49,6 +49,9 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 
 	vType := indirectType(b.field.valType)
 
+	fmt.Println("vType.Kind().String():", vType.Kind().String())
+	fmt.Println("b.field.valType.String()", b.field.valType.String())
+
 	switch vType.Kind() {
 	case reflect.String:
 		res = b.stringCondition(val)
