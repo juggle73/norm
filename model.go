@@ -164,3 +164,7 @@ func (m *Model) FieldByName(name string) (*Field, bool) {
 	v, ok := m.fieldByAnyName[name]
 	return v, ok
 }
+
+func (m *Model) Fields() []*Field {
+	return m.fields
+}
