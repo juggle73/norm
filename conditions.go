@@ -18,14 +18,16 @@ type conditionBuilder struct {
 	conditions []string
 	values     []any
 	field      *Field
+	prefix     string
 }
 
 // BuildConditions builds sql WHERE conditions and return them with bind values
-func (m *Model) BuildConditions(obj map[string]any) ([]string, []any) {
+func (m *Model) BuildConditions(obj map[string]any, prefix string) ([]string, []any) {
 
 	builder := conditionBuilder{
 		conditions: make([]string, 0),
 		values:     make([]any, 0),
+		prefix:     prefix,
 	}
 
 	for k, v := range obj {
@@ -82,14 +84,14 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 			case "like":
 				v := val.MapIndex(k)
 				b.values = append(b.values, v.Elem().Interface())
-				res = fmt.Sprintf("%s LIKE $%d", b.field.dbName, len(b.values))
+				res = fmt.Sprintf("%s%s LIKE $%d", b.prefix, b.field.dbName, len(b.values))
 			case "isNull":
 				v := val.MapIndex(k)
 				if v.Elem().Kind() == reflect.Bool {
 					if v.Elem().Bool() {
-						res = fmt.Sprintf("%s IS NULL", b.field.dbName)
+						res = fmt.Sprintf("%s%s IS NULL", b.prefix, b.field.dbName)
 					} else {
-						res = fmt.Sprintf("%s IS NOT NULL", b.field.dbName)
+						res = fmt.Sprintf("%s%s IS NOT NULL", b.prefix, b.field.dbName)
 					}
 				}
 			}
@@ -101,7 +103,7 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s IN (%s)", b.field.dbName, strings.Join(a, ", "))
+		res = fmt.Sprintf("%s%s IN (%s)", b.prefix, b.field.dbName, strings.Join(a, ", "))
 	}
 
 	return res
@@ -113,7 +115,7 @@ func (b *conditionBuilder) intCondition(val reflect.Value) string {
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		b.values = append(b.values, val.Interface())
-		res = fmt.Sprintf("%s=$%d", b.field.dbName, len(b.values))
+		res = fmt.Sprintf("%s%s=$%d", b.prefix, b.field.dbName, len(b.values))
 	case reflect.Map:
 		keys := val.MapKeys()
 		for _, k := range keys {
@@ -131,14 +133,14 @@ func (b *conditionBuilder) intCondition(val reflect.Value) string {
 						res += " AND "
 					}
 					b.values = append(b.values, v.Elem().Interface())
-					res = fmt.Sprintf("%s%s %s $%d", res, b.field.dbName, operationMap[k.String()], len(b.values))
+					res = fmt.Sprintf("%s%s%s %s $%d", res, b.prefix, b.field.dbName, operationMap[k.String()], len(b.values))
 				}
 			case "isNull":
 				if v.Elem().Kind() == reflect.Bool {
 					if v.Elem().Bool() {
-						res = fmt.Sprintf("%s%s IS NULL", res, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s IS NULL", res, b.prefix, b.field.dbName)
 					} else {
-						res = fmt.Sprintf("%s IS NOT NULL", b.field.dbName)
+						res = fmt.Sprintf("%s%s IS NOT NULL", b.prefix, b.field.dbName)
 					}
 				}
 			}
@@ -150,7 +152,7 @@ func (b *conditionBuilder) intCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s IN (%s)", b.field.dbName, strings.Join(a, ", "))
+		res = fmt.Sprintf("%s%s IN (%s)", b.prefix, b.field.dbName, strings.Join(a, ", "))
 	}
 
 	return res
@@ -162,7 +164,7 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 	switch val.Kind() {
 	case reflect.String:
 		b.values = append(b.values, val.Interface())
-		res = fmt.Sprintf("%s=$%d", b.field.dbName, len(b.values))
+		res = fmt.Sprintf("%s%s=$%d", b.prefix, b.field.dbName, len(b.values))
 	case reflect.Map:
 		keys := val.MapKeys()
 		for _, k := range keys {
@@ -180,14 +182,14 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 						res += " AND "
 					}
 					b.values = append(b.values, v.Elem().Interface())
-					res = fmt.Sprintf("%s%s %s $%d", res, b.field.dbName, operationMap[k.String()], len(b.values))
+					res = fmt.Sprintf("%s%s%s %s $%d", res, b.prefix, b.field.dbName, operationMap[k.String()], len(b.values))
 				}
 			case "isNull":
 				if v.Elem().Kind() == reflect.Bool {
 					if v.Elem().Bool() {
-						res = fmt.Sprintf("%s%s IS NULL", res, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s IS NULL", res, b.prefix, b.field.dbName)
 					} else {
-						res = fmt.Sprintf("%s IS NOT NULL", b.field.dbName)
+						res = fmt.Sprintf("%s%s IS NOT NULL", b.prefix, b.field.dbName)
 					}
 				}
 			}
@@ -199,7 +201,7 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s IN (%s)", b.field.dbName, strings.Join(a, ", "))
+		res = fmt.Sprintf("%s%s IN (%s)", b.prefix, b.field.dbName, strings.Join(a, ", "))
 	}
 
 	return res
