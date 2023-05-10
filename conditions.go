@@ -70,6 +70,19 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 		if b.field.valType.String() == "time.Time" || b.field.valType.String() == "pgtype.Timestamptz" {
 			res = b.timeCondition(val)
 		}
+	case reflect.Map:
+		if b.suffix != "" {
+			switch val.Kind() {
+			case reflect.String:
+				res = b.stringCondition(val)
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				res = b.intCondition(val)
+			case reflect.Struct:
+				if b.field.valType.String() == "time.Time" || b.field.valType.String() == "pgtype.Timestamptz" {
+					res = b.timeCondition(val)
+				}
+			}
+		}
 	default:
 
 	}
