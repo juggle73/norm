@@ -72,16 +72,8 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 		}
 	case reflect.Map:
 		if b.suffix != "" {
-			switch val.Kind() {
-			case reflect.String:
-				res = b.stringCondition(val)
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				res = b.intCondition(val)
-			case reflect.Struct:
-				if b.field.valType.String() == "time.Time" || b.field.valType.String() == "pgtype.Timestamptz" {
-					res = b.timeCondition(val)
-				}
-			}
+			// TODO: add support for json field types
+			res = b.stringCondition(val)
 		}
 	default:
 
@@ -98,7 +90,7 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 	switch val.Kind() {
 	case reflect.String:
 		b.values = append(b.values, val.Interface())
-		res = fmt.Sprintf("%s%s=$%d", b.field.dbName, b.suffix, len(b.values))
+		res = fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values))
 	case reflect.Map:
 		keys := val.MapKeys()
 		for _, k := range keys {
