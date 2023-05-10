@@ -40,7 +40,7 @@ func (m *Model) BuildConditions(obj map[string]any, prefix string) ([]string, []
 			fieldName = parts[0]
 			builder.suffix = "->>" + parts[1]
 		}
-		mField, ok := m.fieldByAnyName[k]
+		mField, ok := m.fieldByAnyName[fieldName]
 		if !ok {
 			continue
 		}
