@@ -18,6 +18,7 @@ type conditionBuilder struct {
 	conditions []string
 	values     []any
 	field      *Field
+	suffix     string
 	prefix     string
 }
 
@@ -31,6 +32,14 @@ func (m *Model) BuildConditions(obj map[string]any, prefix string) ([]string, []
 	}
 
 	for k, v := range obj {
+
+		builder.suffix = ""
+		fieldName := k
+		parts := strings.Split(fieldName, "->>")
+		if len(parts) == 2 {
+			fieldName = parts[0]
+			builder.suffix = "->>" + parts[1]
+		}
 		mField, ok := m.fieldByAnyName[k]
 		if !ok {
 			continue
@@ -76,7 +85,7 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 	switch val.Kind() {
 	case reflect.String:
 		b.values = append(b.values, val.Interface())
-		res = fmt.Sprintf("%s=$%d", b.field.dbName, len(b.values))
+		res = fmt.Sprintf("%s%s=$%d", b.field.dbName, b.suffix, len(b.values))
 	case reflect.Map:
 		keys := val.MapKeys()
 		for _, k := range keys {
@@ -87,14 +96,14 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 			case "like":
 				v := val.MapIndex(k)
 				b.values = append(b.values, v.Elem().Interface())
-				res = fmt.Sprintf("%s%s LIKE $%d", b.prefix, b.field.dbName, len(b.values))
+				res = fmt.Sprintf("%s%s%s LIKE $%d", b.prefix, b.field.dbName, b.suffix, len(b.values))
 			case "isNull":
 				v := val.MapIndex(k)
 				if v.Elem().Kind() == reflect.Bool {
 					if v.Elem().Bool() {
-						res = fmt.Sprintf("%s%s IS NULL", b.prefix, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s IS NULL", b.prefix, b.field.dbName, b.suffix)
 					} else {
-						res = fmt.Sprintf("%s%s IS NOT NULL", b.prefix, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix)
 					}
 				}
 			}
@@ -106,7 +115,7 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s%s IN (%s)", b.prefix, b.field.dbName, strings.Join(a, ", "))
+		res = fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", "))
 	}
 
 	return res
@@ -118,7 +127,7 @@ func (b *conditionBuilder) intCondition(val reflect.Value) string {
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		b.values = append(b.values, val.Interface())
-		res = fmt.Sprintf("%s%s=$%d", b.prefix, b.field.dbName, len(b.values))
+		res = fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values))
 	case reflect.Map:
 		keys := val.MapKeys()
 		for _, k := range keys {
@@ -136,14 +145,14 @@ func (b *conditionBuilder) intCondition(val reflect.Value) string {
 						res += " AND "
 					}
 					b.values = append(b.values, v.Elem().Interface())
-					res = fmt.Sprintf("%s%s%s %s $%d", res, b.prefix, b.field.dbName, operationMap[k.String()], len(b.values))
+					res = fmt.Sprintf("%s%s%s%s %s $%d", res, b.prefix, b.field.dbName, b.suffix, operationMap[k.String()], len(b.values))
 				}
 			case "isNull":
 				if v.Elem().Kind() == reflect.Bool {
 					if v.Elem().Bool() {
-						res = fmt.Sprintf("%s%s%s IS NULL", res, b.prefix, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s%s IS NULL", res, b.prefix, b.field.dbName, b.suffix)
 					} else {
-						res = fmt.Sprintf("%s%s IS NOT NULL", b.prefix, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix)
 					}
 				}
 			}
@@ -155,7 +164,7 @@ func (b *conditionBuilder) intCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s%s IN (%s)", b.prefix, b.field.dbName, strings.Join(a, ", "))
+		res = fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", "))
 	}
 
 	return res
@@ -167,7 +176,7 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 	switch val.Kind() {
 	case reflect.String:
 		b.values = append(b.values, val.Interface())
-		res = fmt.Sprintf("%s%s=$%d", b.prefix, b.field.dbName, len(b.values))
+		res = fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values))
 	case reflect.Map:
 		keys := val.MapKeys()
 		for _, k := range keys {
@@ -185,14 +194,14 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 						res += " AND "
 					}
 					b.values = append(b.values, v.Elem().Interface())
-					res = fmt.Sprintf("%s%s%s %s $%d", res, b.prefix, b.field.dbName, operationMap[k.String()], len(b.values))
+					res = fmt.Sprintf("%s%s%s%s %s $%d", res, b.prefix, b.field.dbName, b.suffix, operationMap[k.String()], len(b.values))
 				}
 			case "isNull":
 				if v.Elem().Kind() == reflect.Bool {
 					if v.Elem().Bool() {
-						res = fmt.Sprintf("%s%s%s IS NULL", res, b.prefix, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s%s IS NULL", res, b.prefix, b.field.dbName, b.suffix)
 					} else {
-						res = fmt.Sprintf("%s%s IS NOT NULL", b.prefix, b.field.dbName)
+						res = fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix)
 					}
 				}
 			}
@@ -204,7 +213,7 @@ func (b *conditionBuilder) timeCondition(val reflect.Value) string {
 			b.values = append(b.values, val.Index(i).Interface())
 			a[i] = fmt.Sprintf("$%d", len(b.values))
 		}
-		res = fmt.Sprintf("%s%s IN (%s)", b.prefix, b.field.dbName, strings.Join(a, ", "))
+		res = fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", "))
 	}
 
 	return res
