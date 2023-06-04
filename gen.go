@@ -33,7 +33,7 @@ func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
 			goType = "int64"
 		case "integer":
 			goType = "int"
-		case "character varying":
+		case "character varying", "text":
 			goType = "string"
 		case "boolean":
 			goType = "bool"
@@ -46,6 +46,8 @@ func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
 		case "bytea":
 			goType = "[]byte"
 			pointerPrefix = ""
+		default:
+			continue
 		}
 
 		structStr += fmt.Sprintf("\t%s %s%s `json:\"%s\"%s`\n",
