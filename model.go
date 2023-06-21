@@ -87,6 +87,21 @@ func (m *Model) DbNames(exclude, prefix string) []string {
 	return res
 }
 
+// DbNamesFields returns slice of fields database names with prefix in snake-case, including
+// only specified in the parameter fields
+func (m *Model) DbNamesFields(fields, prefix string) []string {
+	fieldsArr := strings.Split(fields, ",")
+
+	res := make([]string, 0)
+	for _, f := range m.fields {
+		if has(fieldsArr, f.dbName) {
+			res = append(res, prefix+f.dbName)
+		}
+	}
+
+	return res
+}
+
 // DbNamesWithBinds returns slice of fields database names in snake-case
 // in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude
 func (m *Model) DbNamesWithBinds(exclude string) []string {
@@ -101,6 +116,23 @@ func (m *Model) DbNamesWithBinds(exclude string) []string {
 
 		res = append(res, fmt.Sprintf("%s=$%d", f.dbName, bind))
 		bind++
+	}
+
+	return res
+}
+
+// DbNamesFieldsWithBinds returns slice of fields database names in snake-case
+// in "<field db name>=$<bind num>" format, including only specified in the parameter fields
+func (m *Model) DbNamesFieldsWithBinds(fields string) []string {
+	fieldsArr := strings.Split(fields, ",")
+
+	bind := 1
+	res := make([]string, 0)
+	for _, f := range m.fields {
+		if has(fieldsArr, f.dbName) {
+			res = append(res, fmt.Sprintf("%s=$%d", f.dbName, bind))
+			bind++
+		}
 	}
 
 	return res
@@ -147,6 +179,28 @@ func (m *Model) Values(exclude string) []any {
 		}
 
 		res = append(res, val.FieldByName(f.name).Interface())
+	}
+
+	return res
+}
+
+// ValuesFields returns slice of field values as interface{} for obj,
+// including only specified in the parameter fields
+func (m *Model) ValuesFields(fields string) []any {
+	val := reflect.ValueOf(m.currentObject)
+	if !isPointerToStruct(val) {
+		panic("FieldValues: object must be a pointer to struct")
+	}
+
+	val = val.Elem()
+
+	fieldsArr := strings.Split(fields, ",")
+
+	res := make([]any, 0)
+	for _, f := range m.fields {
+		if has(fieldsArr, f.dbName) {
+			res = append(res, val.FieldByName(f.name).Interface())
+		}
 	}
 
 	return res
