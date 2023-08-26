@@ -13,11 +13,10 @@ import (
 //	exclude - exclude fields comma-separated list
 //	returning - comma-separated list of returning fields
 func (m *Model) CreateSQL(exclude, returning string) string {
-	dbNames := m.DbNames(exclude, "")
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 		m.table,
-		strings.Join(dbNames, ", "),
-		Binds(len(dbNames)),
+		m.DbNamesCsv(exclude, ""),
+		m.BindsCsv(exclude),
 	)
 
 	if returning != "" {
@@ -32,11 +31,10 @@ func (m *Model) CreateSQL(exclude, returning string) string {
 //	fields - include fields comma-separated list
 //	returning - comma-separated list of returning fields
 func (m *Model) CreateSQLFields(fields, returning string) string {
-	dbNames := m.DbNamesFields(fields, "")
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 		m.table,
-		strings.Join(dbNames, ", "),
-		Binds(len(dbNames)),
+		m.DbNamesFieldsCsv(fields, ""),
+		m.BindsFieldsCsv(fields),
 	)
 
 	if returning != "" {
@@ -95,7 +93,7 @@ func (m *Model) CreateFrom(data []byte, returning string) (sql string, binds []a
 //	where - string containing conditions, e.g. "id=?"
 func (m *Model) ReadSQL(where string) string {
 	sql := fmt.Sprintf("SELECT %s FROM %s",
-		strings.Join(m.DbNames("", ""), ", "),
+		m.DbNamesCsv("", ""),
 		m.table)
 
 	bind := 1
