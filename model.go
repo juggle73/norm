@@ -87,6 +87,12 @@ func (m *Model) DbNames(exclude, prefix string) []string {
 	return res
 }
 
+// DbNamesCsv returns comma separated names of fields database names with prefix in snake-case, excluding
+// specified in the parameter exclude
+func (m *Model) DbNamesCsv(exclude, prefix string) string {
+	return strings.Join(m.DbNames(exclude, prefix), ", ")
+}
+
 // DbNamesFields returns slice of fields database names with prefix in snake-case, including
 // only specified in the parameter fields
 func (m *Model) DbNamesFields(fields, prefix string) []string {
@@ -100,6 +106,12 @@ func (m *Model) DbNamesFields(fields, prefix string) []string {
 	}
 
 	return res
+}
+
+// DbNamesFieldsCsv returns comma separated names of fields database names with prefix in snake-case, including
+// only specified in the parameter fields
+func (m *Model) DbNamesFieldsCsv(fields, prefix string) string {
+	return strings.Join(m.DbNamesFields(fields, prefix), ", ")
 }
 
 // DbNamesWithBinds returns slice of fields database names in snake-case
@@ -121,6 +133,36 @@ func (m *Model) DbNamesWithBinds(exclude string) []string {
 	return res
 }
 
+// DbNamesWithBindsCsv returns comma separated names of fields database names in snake-case
+// in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude
+func (m *Model) DbNamesWithBindsCsv(exclude string) string {
+	return strings.Join(m.DbNamesWithBinds(exclude), ", ")
+}
+
+// BindsCsv returns comma separated binds in format $<bind no.> for count of fields, excluding
+// specified in the parameter exclude
+func (m *Model) BindsCsv(exclude string) string {
+	dbNames := m.DbNames(exclude, "")
+	res := make([]string, 0)
+	for i := range dbNames {
+		res = append(res, fmt.Sprintf("$%d", i+1))
+	}
+
+	return strings.Join(res, ", ")
+}
+
+// BindsFieldsCsv returns comma separated binds in format $<bind no.> for count of fields, including
+// only specified in the parameter fields
+func (m *Model) BindsFieldsCsv(fields string) string {
+	dbNames := m.DbNamesFields(fields, "")
+	res := make([]string, 0)
+	for i := range dbNames {
+		res = append(res, fmt.Sprintf("$%d", i+1))
+	}
+
+	return strings.Join(res, ", ")
+}
+
 // DbNamesFieldsWithBinds returns slice of fields database names in snake-case
 // in "<field db name>=$<bind num>" format, including only specified in the parameter fields
 func (m *Model) DbNamesFieldsWithBinds(fields string) []string {
@@ -136,6 +178,12 @@ func (m *Model) DbNamesFieldsWithBinds(fields string) []string {
 	}
 
 	return res
+}
+
+// DbNamesFieldsWithBindsCsv returns slice of fields database names in snake-case
+// in "<field db name>=$<bind num>" format, including only specified in the parameter fields
+func (m *Model) DbNamesFieldsWithBindsCsv(fields string) string {
+	return strings.Join(m.DbNamesFieldsWithBinds(fields), ", ")
 }
 
 // Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
@@ -207,7 +255,8 @@ func (m *Model) ValuesFields(fields string) []any {
 }
 
 func (m *Model) NewInstance() any {
-	return reflect.New(m.valType).Interface()
+	m.currentObject = reflect.New(m.valType).Interface()
+	return m.currentObject
 }
 
 func (m *Model) Table() string {
