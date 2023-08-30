@@ -9,9 +9,10 @@ import (
 
 type Col struct {
 	Name       string `json:"name"`
-	IsNullable string
-	DataType   string
-	Pk         bool
+	IsNullable string `json:"isNullable"`
+	DataType   string `json:"dataType"`
+	Pk         bool   `json:"pk"`
+	Fk         string `json:"fk"`
 }
 
 func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
@@ -26,7 +27,10 @@ func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
 		normTag := ""
 		if col.Pk {
 			normTag = " norm=\"pk\""
+		} else if col.Fk != "" {
+			normTag = fmt.Sprintf(" norm=\"fk=%s\"", col.Fk)
 		}
+
 		goType := ""
 		switch col.DataType {
 		case "bigint":
