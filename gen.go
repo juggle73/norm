@@ -26,9 +26,9 @@ func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
 		}
 		normTag := ""
 		if col.Pk {
-			normTag = " norm=\"pk\""
+			normTag = " norm:\"pk\""
 		} else if col.Fk != "" {
-			normTag = fmt.Sprintf(" norm=\"fk=%s\"", col.Fk)
+			normTag = fmt.Sprintf(" norm:\"fk=%s\"", col.Fk)
 		}
 
 		goType := ""
