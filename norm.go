@@ -33,23 +33,23 @@ func NewNorm(config *Config) *Norm {
 }
 
 // AddModel adds model to models cache
-func (norm *Norm) AddModel(obj any, table string) *Model {
-	model := NewModel(norm.config)
+func (n *Norm) AddModel(obj any, table string) *Model {
+	model := NewModel(n.config)
 
 	err := model.Parse(obj, table)
 	if err != nil {
 		panic(err)
 	}
 
-	if norm.models == nil {
-		norm.models = make(map[reflect.Type]*Model)
-		norm.tables = make(map[string]*Model)
+	if n.models == nil {
+		n.models = make(map[reflect.Type]*Model)
+		n.tables = make(map[string]*Model)
 	}
 
-	norm.mut.Lock()
-	defer norm.mut.Unlock()
-	norm.models[model.valType] = model
-	norm.tables[table] = model
+	n.mut.Lock()
+	defer n.mut.Unlock()
+	n.models[model.valType] = model
+	n.tables[table] = model
 
 	return model
 }
@@ -59,14 +59,14 @@ func (norm *Norm) AddModel(obj any, table string) *Model {
 //	obj - must be a pointer to a struct.
 //
 // If Model for the object was not found in the cache, then a new model is created and added to the cache.
-func (norm *Norm) M(obj any) *Model {
+func (n *Norm) M(obj any) *Model {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
 		panic("obj must be pointer to struct")
 	}
-	model, ok := norm.models[val.Elem().Type()]
+	model, ok := n.models[val.Elem().Type()]
 	if !ok {
-		model = norm.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
+		model = n.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
 	}
 
 	model.currentObject = obj
@@ -74,6 +74,6 @@ func (norm *Norm) M(obj any) *Model {
 	return model
 }
 
-func (norm *Norm) T(table string) *Model {
-	return norm.tables[table]
+func (n *Norm) T(table string) *Model {
+	return n.tables[table]
 }

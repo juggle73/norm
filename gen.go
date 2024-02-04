@@ -1,8 +1,11 @@
 package norm
 
 import (
+	"context"
 	"fmt"
 	"github.com/iancoleman/strcase"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"log"
 )
 
 //select column_name, is_nullable, data_type, character_maximum_length, numeric_precision from information_schema.columns where table_name='matches' order by ordinal_position;
@@ -15,7 +18,7 @@ type Col struct {
 	Fk         string `json:"fk"`
 }
 
-func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
+func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 	imports := make(map[string]bool)
 	structStr := fmt.Sprintf("type %s struct {\n", structName)
 
@@ -72,4 +75,32 @@ func (norm *Norm) Gen(packageName, structName string, cols []Col) string {
 	res += structStr
 
 	return res
+}
+
+func (n *Norm) GenDb(pool *pgxpool.Pool, packageName, tableName string) string {
+	sql := fmt.Sprintf(
+		"select column_name, is_nullable, data_type from information_schema.columns where table_name='%s' order by ordinal_position",
+		tableName)
+
+	rows, err := pool.Query(context.Background(), sql)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	cols := make([]Col, 0)
+
+	for rows.Next() {
+		col := Col{}
+		err = rows.Scan(
+			&col.Name,
+			&col.IsNullable,
+			&col.DataType)
+		if err != nil {
+			log.Fatal(err)
+		}
+		cols = append(cols, col)
+	}
+
+	return n.Gen(packageName, strcase.ToLowerCamel(tableName), cols)
 }
