@@ -77,7 +77,7 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 	return res
 }
 
-func (n *Norm) GenDb(pool *pgxpool.Pool, packageName, tableName string) string {
+func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, tableName string) string {
 	sql := fmt.Sprintf(
 		"select column_name, is_nullable, data_type from information_schema.columns where table_name='%s' order by ordinal_position",
 		tableName)
