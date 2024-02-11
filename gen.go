@@ -77,30 +77,49 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 	return res
 }
 
-func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, tableName string) string {
-	sql := fmt.Sprintf(
-		"select column_name, is_nullable, data_type from information_schema.columns where table_name='%s' order by ordinal_position",
-		tableName)
+func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map[string]string {
 
-	rows, err := pool.Query(context.Background(), sql)
+	rows, err := pool.Query(context.Background(),
+		"select tablename from pg_tables where schemaname=$1", schemaName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer rows.Close()
 
-	cols := make([]Col, 0)
+	var tableName string
+	res := make(map[string]string)
 
 	for rows.Next() {
-		col := Col{}
-		err = rows.Scan(
-			&col.Name,
-			&col.IsNullable,
-			&col.DataType)
+		err = rows.Scan(&tableName)
 		if err != nil {
 			log.Fatal(err)
 		}
-		cols = append(cols, col)
+
+		colsRows, err := pool.Query(context.Background(),
+			`select column_name, is_nullable, data_type 
+				from information_schema.columns 
+				where table_name=$1 order by ordinal_position`, tableName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer colsRows.Close()
+
+		cols := make([]Col, 0)
+
+		for rows.Next() {
+			col := Col{}
+			err = rows.Scan(
+				&col.Name,
+				&col.IsNullable,
+				&col.DataType)
+			if err != nil {
+				log.Fatal(err)
+			}
+			cols = append(cols, col)
+		}
+
+		res[tableName] = n.Gen(packageName, strcase.ToLowerCamel(tableName), cols)
 	}
 
-	return n.Gen(packageName, strcase.ToLowerCamel(tableName), cols)
+	return res
 }
