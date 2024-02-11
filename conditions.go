@@ -23,6 +23,14 @@ type conditionBuilder struct {
 }
 
 // BuildConditions builds sql WHERE conditions and return them with bind values
+//
+// Parameters:
+//
+//	prefix - prefix for field names, table alias, used when using joins in sql query
+//	obj.key - field name or [field name]->>[json key name] for json field types
+//	obj.value:
+//	  for string field type:
+//	    string - add [field]=[value] condition
 func (m *Model) BuildConditions(obj map[string]any, prefix string) ([]string, []any) {
 
 	builder := conditionBuilder{
@@ -57,9 +65,6 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 	res := ""
 
 	vType := indirectType(b.field.valType)
-
-	fmt.Println("vType.Kind().String():", vType.Kind().String())
-	fmt.Println("b.field.valType.String()", b.field.valType.String())
 
 	switch vType.Kind() {
 	case reflect.String:
