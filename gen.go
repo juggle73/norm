@@ -106,9 +106,9 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 
 		cols := make([]Col, 0)
 
-		for rows.Next() {
+		for colsRows.Next() {
 			col := Col{}
-			err = rows.Scan(
+			err = colsRows.Scan(
 				&col.Name,
 				&col.IsNullable,
 				&col.DataType)
