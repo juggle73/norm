@@ -118,7 +118,7 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 			cols = append(cols, col)
 		}
 
-		res[tableName] = n.Gen(packageName, strcase.ToLowerCamel(tableName), cols)
+		res[tableName] = n.Gen(packageName, strcase.ToCamel(tableName), cols)
 	}
 
 	return res
