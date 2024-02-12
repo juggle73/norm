@@ -106,7 +106,6 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer colsRows.Close()
 
 		cols := make([]Col, 0)
 
@@ -121,6 +120,7 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 			}
 			cols = append(cols, col)
 		}
+		colsRows.Close()
 
 		res[tableName] = n.Gen(packageName, strcase.ToCamel(tableName), cols)
 	}
