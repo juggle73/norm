@@ -6,6 +6,7 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
+	"strings"
 )
 
 //select column_name, is_nullable, data_type, character_maximum_length, numeric_precision from information_schema.columns where table_name='matches' order by ordinal_position;
@@ -35,7 +36,7 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 		}
 
 		goType := ""
-		switch col.DataType {
+		switch strings.ToLower(col.DataType) {
 		case "bigint":
 			goType = "int64"
 		case "integer":
@@ -52,6 +53,9 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 			pointerPrefix = ""
 		case "bytea":
 			goType = "[]byte"
+			pointerPrefix = ""
+		case "array":
+			goType = "[]string"
 			pointerPrefix = ""
 		default:
 			continue
