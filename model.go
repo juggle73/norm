@@ -254,20 +254,24 @@ func (m *Model) ValuesFields(fields string) []any {
 	return res
 }
 
+// NewInstance creates and returns new instance of struct
 func (m *Model) NewInstance() any {
 	m.currentObject = reflect.New(m.valType).Interface()
 	return m.currentObject
 }
 
+// Table returns model database table name
 func (m *Model) Table() string {
 	return m.table
 }
 
+// FieldByName trying to find field by name and returns the *Field or error
 func (m *Model) FieldByName(name string) (*Field, bool) {
 	v, ok := m.fieldByAnyName[name]
 	return v, ok
 }
 
+// Fields returns the slice of *Field containing all model fields
 func (m *Model) Fields() []*Field {
 	return m.fields
 }

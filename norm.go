@@ -74,6 +74,9 @@ func (n *Norm) M(obj any) *Model {
 	return model
 }
 
+// T trying to find registered model by table name and returns *Model for object
+//
+// If it was not found in the cache, then returns nil
 func (n *Norm) T(table string) *Model {
 	return n.tables[table]
 }

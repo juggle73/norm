@@ -19,6 +19,7 @@ type Col struct {
 	Fk         string `json:"fk"`
 }
 
+// Gen generates a golang source code describing struct with fields from cols
 func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 	imports := make(map[string]bool)
 	structStr := fmt.Sprintf("type %s struct {\n", structName)
@@ -41,6 +42,10 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 			goType = "int64"
 		case "integer":
 			goType = "int"
+		case "float":
+			goType = "float32"
+		case "double precision":
+			goType = "float64"
 		case "character varying", "text":
 			goType = "string"
 		case "boolean":
@@ -81,6 +86,7 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 	return res
 }
 
+// GenFromDb generates golang source code describing struct with fields for all tables in specified schemaName
 func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map[string]string {
 
 	rows, err := pool.Query(context.Background(),
