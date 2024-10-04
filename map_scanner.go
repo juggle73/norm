@@ -12,6 +12,7 @@ type MapScanner struct {
 	classes map[uint32]string
 }
 
+// NewMapScanner creates and returns new instance of MapScanner
 func NewMapScanner(conn *pgxpool.Pool) (*MapScanner, error) {
 
 	ms := &MapScanner{classes: make(map[uint32]string)}

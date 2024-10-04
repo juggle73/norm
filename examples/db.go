@@ -1,55 +1,12 @@
-# norm - database "no ORM" tools
-
-norm is tools to simplify working with postgresql database drivers (e.g. pgx) without ORM.
-
-Install:
-
-```shell
-go get -u github.com/juggle73/norm
-```
-
-Usage:
-
-```go
-package main
+package examples
 
 import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/juggle73/norm"
 	"os"
 	"time"
 )
-
-type User struct {
-	Id    int64  `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-func main() {
-	pool, err := initDbClient()
-	if err != nil {
-		panic(err)
-	}
-
-	orm := norm.NewNorm(nil)
-
-	user := User{}
-	model := orm.M(&user)
-	userId := 42
-
-	sql := fmt.Sprintf("select %s from users where id=$1", model.DbNamesCsv("", ""))
-
-	err = pool.QueryRow(context.Background(), sql, userId).
-		Scan(model.Pointers("")...)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(user)
-}
 
 func initDbClient() (*pgxpool.Pool, error) {
 	connString := fmt.Sprintf(
@@ -78,4 +35,3 @@ func initDbClient() (*pgxpool.Pool, error) {
 
 	return dbConnPool, nil
 }
-```
