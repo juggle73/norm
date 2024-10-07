@@ -80,3 +80,13 @@ func (n *Norm) M(obj any) *Model {
 func (n *Norm) T(table string) *Model {
 	return n.tables[table]
 }
+
+func (n *Norm) Tables() []string {
+	n.mut.Lock()
+	defer n.mut.Unlock()
+	tables := make([]string, 0, len(n.tables))
+	for table := range n.tables {
+		tables = append(tables, table)
+	}
+	return tables
+}
