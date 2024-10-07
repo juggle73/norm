@@ -35,3 +35,7 @@ func (f *Field) Name() string {
 func (f *Field) JsonName() string {
 	return strcase.ToLowerCamel(f.name)
 }
+
+func (f *Field) Type() reflect.Type {
+	return f.valType
+}
