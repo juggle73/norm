@@ -187,7 +187,7 @@ func (m *Model) DbNamesFieldsWithBindsCsv(fields string) string {
 }
 
 // Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
-func (m *Model) Pointers(exclude string) []any {
+func (m *Model) Pointers(exclude string, add ...any) []any {
 	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
 		panic("FieldPointers: object must be a pointer to struct")
@@ -204,6 +204,10 @@ func (m *Model) Pointers(exclude string) []any {
 		}
 
 		res = append(res, val.FieldByName(f.name).Addr().Interface())
+	}
+
+	for _, p := range add {
+		res = append(res, p)
 	}
 
 	return res
