@@ -213,6 +213,30 @@ func (m *Model) Pointers(exclude string, add ...any) []any {
 	return res
 }
 
+// PointerFields returns slice of field pointers for obj, including
+// only specified in the parameter fields
+func (m *Model) PointerFields(include string) []any {
+	val := reflect.ValueOf(m.currentObject)
+	if !isPointerToStruct(val) {
+		panic("FieldPointers: object must be a pointer to struct")
+	}
+
+	val = val.Elem()
+
+	includeArr := strings.Split(include, ",")
+
+	res := make([]any, 0)
+	for _, f := range m.fields {
+		if !has(includeArr, f.dbName) {
+			continue
+		}
+
+		res = append(res, val.FieldByName(f.name).Addr().Interface())
+	}
+
+	return res
+}
+
 // Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
 func (m *Model) Values(exclude string) []any {
 	val := reflect.ValueOf(m.currentObject)
