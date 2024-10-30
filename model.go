@@ -187,6 +187,8 @@ func (m *Model) DbNamesFieldsWithBindsCsv(fields string) string {
 }
 
 // Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
+//
+// Deprecated: Use PointersObj instead
 func (m *Model) Pointers(exclude string, add ...any) []any {
 	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
@@ -213,8 +215,61 @@ func (m *Model) Pointers(exclude string, add ...any) []any {
 	return res
 }
 
+// PointersObj returns slice of field pointers for obj, excluding specified in the parameter exclude
+func (m *Model) PointersObj(obj any, exclude string, add ...any) []any {
+	val := reflect.ValueOf(obj)
+	if !isPointerToStruct(val) {
+		panic("FieldPointers: object must be a pointer to struct")
+	}
+
+	val = val.Elem()
+
+	excludeArr := strings.Split(exclude, ",")
+
+	res := make([]any, 0)
+	for _, f := range m.fields {
+		if has(excludeArr, f.dbName) {
+			continue
+		}
+
+		res = append(res, val.FieldByName(f.name).Addr().Interface())
+	}
+
+	for _, p := range add {
+		res = append(res, p)
+	}
+
+	return res
+}
+
+// PointerFieldsObj returns slice of field pointers for obj, including
+// only specified in the parameter fields
+func (m *Model) PointerFieldsObj(obj any, include string) []any {
+	val := reflect.ValueOf(obj)
+	if !isPointerToStruct(val) {
+		panic("FieldPointers: object must be a pointer to struct")
+	}
+
+	val = val.Elem()
+
+	includeArr := strings.Split(include, ",")
+
+	res := make([]any, 0)
+	for _, f := range m.fields {
+		if !has(includeArr, f.dbName) {
+			continue
+		}
+
+		res = append(res, val.FieldByName(f.name).Addr().Interface())
+	}
+
+	return res
+}
+
 // PointerFields returns slice of field pointers for obj, including
 // only specified in the parameter fields
+//
+// Deprecated: Use PointerFieldsObj instead
 func (m *Model) PointerFields(include string) []any {
 	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
@@ -237,7 +292,32 @@ func (m *Model) PointerFields(include string) []any {
 	return res
 }
 
+// ValuesObj returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
+func (m *Model) ValuesObj(obj any, exclude string) []any {
+	val := reflect.ValueOf(obj)
+	if !isPointerToStruct(val) {
+		panic("FieldValues: object must be a pointer to struct")
+	}
+
+	val = val.Elem()
+
+	excludeArr := strings.Split(exclude, ",")
+
+	res := make([]any, 0)
+	for _, f := range m.fields {
+		if has(excludeArr, f.dbName) {
+			continue
+		}
+
+		res = append(res, val.FieldByName(f.name).Interface())
+	}
+
+	return res
+}
+
 // Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
+//
+// Deprecated: Use ValuesObj instead
 func (m *Model) Values(exclude string) []any {
 	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
@@ -260,8 +340,32 @@ func (m *Model) Values(exclude string) []any {
 	return res
 }
 
+// ValuesFieldsObj returns slice of field values as interface{} for obj,
+// including only specified in the parameter fields
+func (m *Model) ValuesFieldsObj(obj any, fields string) []any {
+	val := reflect.ValueOf(obj)
+	if !isPointerToStruct(val) {
+		panic("FieldValues: object must be a pointer to struct")
+	}
+
+	val = val.Elem()
+
+	fieldsArr := strings.Split(fields, ",")
+
+	res := make([]any, 0)
+	for _, f := range m.fields {
+		if has(fieldsArr, f.dbName) {
+			res = append(res, val.FieldByName(f.name).Interface())
+		}
+	}
+
+	return res
+}
+
 // ValuesFields returns slice of field values as interface{} for obj,
 // including only specified in the parameter fields
+//
+// Deprecated: Use ValuesFieldsObj instead
 func (m *Model) ValuesFields(fields string) []any {
 	val := reflect.ValueOf(m.currentObject)
 	if !isPointerToStruct(val) {
