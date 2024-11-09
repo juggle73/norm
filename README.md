@@ -44,10 +44,10 @@ func main() {
 	model := orm.M(&user)
 	userId := 42
 
-	sql := fmt.Sprintf("select %s from users where id=$1", model.DbNamesCsv("", ""))
+	sql := fmt.Sprintf("select %s from users where id=$1", model.Fields())
 
 	err = pool.QueryRow(context.Background(), sql, userId).
-		Scan(model.Pointers(&user, "")...)
+		Scan(model.Pointers(&user)...)
 	if err != nil {
 		panic(err)
 	}
