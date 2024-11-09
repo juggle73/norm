@@ -15,10 +15,9 @@ type Model struct {
 	fields         []*Field
 	fieldByAnyName map[string]*Field
 
-	config        *Config
-	currentObject any
-	pk            []string
-	unique        []string
+	config *Config
+	pk     []string
+	unique []string
 }
 
 // NewModel creates a new Model instance
@@ -70,59 +69,39 @@ func (m *Model) Parse(obj any, table string) error {
 	return nil
 }
 
-// DbNames returns slice of fields database names with prefix in snake-case, excluding
+// Fields returns slice of fields database names with prefix in snake-case, excluding
 // specified in the parameter exclude
-func (m *Model) DbNames(exclude, prefix string) []string {
-	excludeArr := strings.Split(exclude, ",")
+func (m *Model) Fields(opts ...Option) string {
+	co := composeOptions(opts...)
 
 	res := make([]string, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) {
+		if has(co.exclude, f.dbName) {
+			continue
+		}
+		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
 			continue
 		}
 
-		res = append(res, prefix+f.dbName)
+		res = append(res, co.prefix+f.dbName)
 	}
 
-	return res
+	return strings.Join(res, ", ")
 }
 
-// DbNamesCsv returns comma separated names of fields database names with prefix in snake-case, excluding
-// specified in the parameter exclude
-func (m *Model) DbNamesCsv(exclude, prefix string) string {
-	return strings.Join(m.DbNames(exclude, prefix), ", ")
-}
-
-// DbNamesFields returns slice of fields database names with prefix in snake-case, including
-// only specified in the parameter fields
-func (m *Model) DbNamesFields(fields, prefix string) []string {
-	fieldsArr := strings.Split(fields, ",")
-
-	res := make([]string, 0)
-	for _, f := range m.fields {
-		if has(fieldsArr, f.dbName) {
-			res = append(res, prefix+f.dbName)
-		}
-	}
-
-	return res
-}
-
-// DbNamesFieldsCsv returns comma separated names of fields database names with prefix in snake-case, including
-// only specified in the parameter fields
-func (m *Model) DbNamesFieldsCsv(fields, prefix string) string {
-	return strings.Join(m.DbNamesFields(fields, prefix), ", ")
-}
-
-// DbNamesWithBinds returns slice of fields database names in snake-case
-// in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude
-func (m *Model) DbNamesWithBinds(exclude string) []string {
-	excludeArr := strings.Split(exclude, ",")
+// UpdateFields returns comma separated fields database names in snake-case
+// in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude,
+// and next bind number
+func (m *Model) UpdateFields(opts ...Option) (string, int) {
+	co := composeOptions(opts...)
 
 	bind := 1
 	res := make([]string, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) {
+		if has(co.exclude, f.dbName) {
+			continue
+		}
+		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
 			continue
 		}
 
@@ -130,219 +109,63 @@ func (m *Model) DbNamesWithBinds(exclude string) []string {
 		bind++
 	}
 
-	return res
+	return strings.Join(res, ", "), bind
 }
 
-// DbNamesWithBindsCsv returns comma separated names of fields database names in snake-case
-// in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude
-func (m *Model) DbNamesWithBindsCsv(exclude string) string {
-	return strings.Join(m.DbNamesWithBinds(exclude), ", ")
-}
-
-// BindsCsv returns comma separated binds in format $<bind no.> for count of fields, excluding
+// Binds returns comma separated binds in format $<bind no.> for count of fields, excluding
 // specified in the parameter exclude
-func (m *Model) BindsCsv(exclude string) string {
-	dbNames := m.DbNames(exclude, "")
+func (m *Model) Binds(opts ...Option) string {
+	co := composeOptions(opts...)
+
 	res := make([]string, 0)
-	for i := range dbNames {
-		res = append(res, fmt.Sprintf("$%d", i+1))
-	}
-
-	return strings.Join(res, ", ")
-}
-
-// BindsFieldsCsv returns comma separated binds in format $<bind no.> for count of fields, including
-// only specified in the parameter fields
-func (m *Model) BindsFieldsCsv(fields string) string {
-	dbNames := m.DbNamesFields(fields, "")
-	res := make([]string, 0)
-	for i := range dbNames {
-		res = append(res, fmt.Sprintf("$%d", i+1))
-	}
-
-	return strings.Join(res, ", ")
-}
-
-// DbNamesFieldsWithBinds returns slice of fields database names in snake-case
-// in "<field db name>=$<bind num>" format, including only specified in the parameter fields
-func (m *Model) DbNamesFieldsWithBinds(fields string) []string {
-	fieldsArr := strings.Split(fields, ",")
-
-	bind := 1
-	res := make([]string, 0)
-	for _, f := range m.fields {
-		if has(fieldsArr, f.dbName) {
-			res = append(res, fmt.Sprintf("%s=$%d", f.dbName, bind))
-			bind++
+	for i, f := range m.fields {
+		if has(co.exclude, f.dbName) {
+			continue
 		}
+		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+			continue
+		}
+
+		res = append(res, fmt.Sprintf("$%d", i+1))
 	}
 
-	return res
-}
-
-// DbNamesFieldsWithBindsCsv returns slice of fields database names in snake-case
-// in "<field db name>=$<bind num>" format, including only specified in the parameter fields
-func (m *Model) DbNamesFieldsWithBindsCsv(fields string) string {
-	return strings.Join(m.DbNamesFieldsWithBinds(fields), ", ")
+	return strings.Join(res, ", ")
 }
 
 // Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
-//
-// Deprecated: Use PointersObj instead
-func (m *Model) Pointers(exclude string, add ...any) []any {
-	val := reflect.ValueOf(m.currentObject)
+func (m *Model) Pointers(obj any, opts ...Option) []any {
+	co := composeOptions(opts...)
+
+	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
-		panic("FieldPointers: object must be a pointer to struct")
+		panic("Pointers: object must be a pointer to struct")
 	}
 
 	val = val.Elem()
 
-	excludeArr := strings.Split(exclude, ",")
-
 	res := make([]any, 0)
 	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) {
+		if has(co.exclude, f.dbName) {
+			continue
+		}
+		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
 			continue
 		}
 
 		res = append(res, val.FieldByName(f.name).Addr().Interface())
 	}
 
-	for _, p := range add {
+	for _, p := range co.addTargets {
 		res = append(res, p)
-	}
-
-	return res
-}
-
-// PointersObj returns slice of field pointers for obj, excluding specified in the parameter exclude
-func (m *Model) PointersObj(obj any, exclude string, add ...any) []any {
-	val := reflect.ValueOf(obj)
-	if !isPointerToStruct(val) {
-		panic("FieldPointers: object must be a pointer to struct")
-	}
-
-	val = val.Elem()
-
-	excludeArr := strings.Split(exclude, ",")
-
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) {
-			continue
-		}
-
-		res = append(res, val.FieldByName(f.name).Addr().Interface())
-	}
-
-	for _, p := range add {
-		res = append(res, p)
-	}
-
-	return res
-}
-
-// PointerFieldsObj returns slice of field pointers for obj, including
-// only specified in the parameter fields
-func (m *Model) PointerFieldsObj(obj any, include string) []any {
-	val := reflect.ValueOf(obj)
-	if !isPointerToStruct(val) {
-		panic("FieldPointers: object must be a pointer to struct")
-	}
-
-	val = val.Elem()
-
-	includeArr := strings.Split(include, ",")
-
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if !has(includeArr, f.dbName) {
-			continue
-		}
-
-		res = append(res, val.FieldByName(f.name).Addr().Interface())
-	}
-
-	return res
-}
-
-// PointerFields returns slice of field pointers for obj, including
-// only specified in the parameter fields
-//
-// Deprecated: Use PointerFieldsObj instead
-func (m *Model) PointerFields(include string) []any {
-	val := reflect.ValueOf(m.currentObject)
-	if !isPointerToStruct(val) {
-		panic("FieldPointers: object must be a pointer to struct")
-	}
-
-	val = val.Elem()
-
-	includeArr := strings.Split(include, ",")
-
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if !has(includeArr, f.dbName) {
-			continue
-		}
-
-		res = append(res, val.FieldByName(f.name).Addr().Interface())
-	}
-
-	return res
-}
-
-// ValuesObj returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
-func (m *Model) ValuesObj(obj any, exclude string) []any {
-	val := reflect.ValueOf(obj)
-	if !isPointerToStruct(val) {
-		panic("FieldValues: object must be a pointer to struct")
-	}
-
-	val = val.Elem()
-
-	excludeArr := strings.Split(exclude, ",")
-
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) {
-			continue
-		}
-
-		res = append(res, val.FieldByName(f.name).Interface())
 	}
 
 	return res
 }
 
 // Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
-//
-// Deprecated: Use ValuesObj instead
-func (m *Model) Values(exclude string) []any {
-	val := reflect.ValueOf(m.currentObject)
-	if !isPointerToStruct(val) {
-		panic("FieldValues: object must be a pointer to struct")
-	}
+func (m *Model) Values(obj any, opts ...Option) []any {
+	co := composeOptions(opts...)
 
-	val = val.Elem()
-
-	excludeArr := strings.Split(exclude, ",")
-
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if has(excludeArr, f.dbName) {
-			continue
-		}
-
-		res = append(res, val.FieldByName(f.name).Interface())
-	}
-
-	return res
-}
-
-// ValuesFieldsObj returns slice of field values as interface{} for obj,
-// including only specified in the parameter fields
-func (m *Model) ValuesFieldsObj(obj any, fields string) []any {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
 		panic("FieldValues: object must be a pointer to struct")
@@ -350,37 +173,16 @@ func (m *Model) ValuesFieldsObj(obj any, fields string) []any {
 
 	val = val.Elem()
 
-	fieldsArr := strings.Split(fields, ",")
-
 	res := make([]any, 0)
 	for _, f := range m.fields {
-		if has(fieldsArr, f.dbName) {
-			res = append(res, val.FieldByName(f.name).Interface())
+		if has(co.exclude, f.dbName) {
+			continue
 		}
-	}
-
-	return res
-}
-
-// ValuesFields returns slice of field values as interface{} for obj,
-// including only specified in the parameter fields
-//
-// Deprecated: Use ValuesFieldsObj instead
-func (m *Model) ValuesFields(fields string) []any {
-	val := reflect.ValueOf(m.currentObject)
-	if !isPointerToStruct(val) {
-		panic("FieldValues: object must be a pointer to struct")
-	}
-
-	val = val.Elem()
-
-	fieldsArr := strings.Split(fields, ",")
-
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if has(fieldsArr, f.dbName) {
-			res = append(res, val.FieldByName(f.name).Interface())
+		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+			continue
 		}
+
+		res = append(res, val.FieldByName(f.name).Interface())
 	}
 
 	return res
@@ -388,8 +190,7 @@ func (m *Model) ValuesFields(fields string) []any {
 
 // NewInstance creates and returns new instance of struct
 func (m *Model) NewInstance() any {
-	m.currentObject = reflect.New(m.valType).Interface()
-	return m.currentObject
+	return reflect.New(m.valType).Interface()
 }
 
 // Table returns model database table name
@@ -403,7 +204,7 @@ func (m *Model) FieldByName(name string) (*Field, bool) {
 	return v, ok
 }
 
-// Fields returns the slice of *Field containing all model fields
-func (m *Model) Fields() []*Field {
+// FieldDescriptions returns the slice of *Field containing all model fields
+func (m *Model) FieldDescriptions() []*Field {
 	return m.fields
 }
