@@ -69,8 +69,6 @@ func (n *Norm) M(obj any) *Model {
 		model = n.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
 	}
 
-	model.currentObject = obj
-
 	return model
 }
 

@@ -2,6 +2,10 @@
 
 norm is tools to simplify working with postgresql database drivers (e.g. pgx) without ORM.
 
+### Important changes in v2
+
+Remove internal Model.currentObj, always using param object. 
+
 Install:
 
 ```shell
@@ -43,7 +47,7 @@ func main() {
 	sql := fmt.Sprintf("select %s from users where id=$1", model.DbNamesCsv("", ""))
 
 	err = pool.QueryRow(context.Background(), sql, userId).
-		Scan(model.Pointers("")...)
+		Scan(model.Pointers(&user, "")...)
 	if err != nil {
 		panic(err)
 	}
