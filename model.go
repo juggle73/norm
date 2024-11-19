@@ -72,18 +72,18 @@ func (m *Model) Parse(obj any, table string) error {
 // Fields returns slice of fields database names with prefix in snake-case, excluding
 // specified in the parameter exclude
 func (m *Model) Fields(opts ...Option) string {
-	co := composeOptions(opts...)
+	co := ComposeOptions(opts...)
 
 	res := make([]string, 0)
 	for _, f := range m.fields {
-		if has(co.exclude, f.dbName) {
+		if has(co.Exclude, f.dbName) {
 			continue
 		}
-		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
 			continue
 		}
 
-		res = append(res, co.prefix+f.dbName)
+		res = append(res, co.Prefix+f.dbName)
 	}
 
 	return strings.Join(res, ", ")
@@ -93,15 +93,15 @@ func (m *Model) Fields(opts ...Option) string {
 // in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude,
 // and next bind number
 func (m *Model) UpdateFields(opts ...Option) (string, int) {
-	co := composeOptions(opts...)
+	co := ComposeOptions(opts...)
 
 	bind := 1
 	res := make([]string, 0)
 	for _, f := range m.fields {
-		if has(co.exclude, f.dbName) {
+		if has(co.Exclude, f.dbName) {
 			continue
 		}
-		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
 			continue
 		}
 
@@ -115,14 +115,14 @@ func (m *Model) UpdateFields(opts ...Option) (string, int) {
 // Binds returns comma separated binds in format $<bind no.> for count of fields, excluding
 // specified in the parameter exclude
 func (m *Model) Binds(opts ...Option) string {
-	co := composeOptions(opts...)
+	co := ComposeOptions(opts...)
 
 	res := make([]string, 0)
 	for i, f := range m.fields {
-		if has(co.exclude, f.dbName) {
+		if has(co.Exclude, f.dbName) {
 			continue
 		}
-		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
 			continue
 		}
 
@@ -134,7 +134,7 @@ func (m *Model) Binds(opts ...Option) string {
 
 // Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
 func (m *Model) Pointers(obj any, opts ...Option) []any {
-	co := composeOptions(opts...)
+	co := ComposeOptions(opts...)
 
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
@@ -145,17 +145,17 @@ func (m *Model) Pointers(obj any, opts ...Option) []any {
 
 	res := make([]any, 0)
 	for _, f := range m.fields {
-		if has(co.exclude, f.dbName) {
+		if has(co.Exclude, f.dbName) {
 			continue
 		}
-		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
 			continue
 		}
 
 		res = append(res, val.FieldByName(f.name).Addr().Interface())
 	}
 
-	for _, p := range co.addTargets {
+	for _, p := range co.AddTargets {
 		res = append(res, p)
 	}
 
@@ -164,7 +164,7 @@ func (m *Model) Pointers(obj any, opts ...Option) []any {
 
 // Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
 func (m *Model) Values(obj any, opts ...Option) []any {
-	co := composeOptions(opts...)
+	co := ComposeOptions(opts...)
 
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
@@ -175,10 +175,10 @@ func (m *Model) Values(obj any, opts ...Option) []any {
 
 	res := make([]any, 0)
 	for _, f := range m.fields {
-		if has(co.exclude, f.dbName) {
+		if has(co.Exclude, f.dbName) {
 			continue
 		}
-		if len(co.fields) > 0 && !has(co.fields, f.dbName) {
+		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
 			continue
 		}
 
