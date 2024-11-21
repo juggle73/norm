@@ -1,6 +1,9 @@
 package norm
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type OptionType int
 
@@ -9,6 +12,7 @@ const (
 	FieldsOption
 	ReturningOption
 	PrefixOption
+	WhereOption
 	AddTargetsOption
 )
 
@@ -18,12 +22,32 @@ type Option interface {
 }
 
 type (
-	excludeOption    string
-	fieldsOption     string
-	returningOption  string
-	prefixOption     string
+	excludeOption   string
+	fieldsOption    string
+	returningOption string
+	prefixOption    string
+	whereOption     struct {
+		WhereString string
+		Binds       int
+	}
 	addTargetsOption []any
 )
+
+func parseWhere(where string) *whereOption {
+	if where == "" {
+		return nil
+	}
+
+	count := strings.Count(where, "?")
+	for bind := 1; bind <= count; bind++ {
+		where = strings.Replace(where, "?", fmt.Sprintf("$%d", bind), 1)
+	}
+
+	return &whereOption{
+		WhereString: where,
+		Binds:       count,
+	}
+}
 
 func (opt excludeOption) Type() OptionType { return ExcludeOption }
 func (opt excludeOption) Value() any       { return string(opt) }
@@ -49,6 +73,12 @@ func Prefix(prefix string) Option {
 	return prefixOption(prefix)
 }
 
+func (opt whereOption) Type() OptionType { return WhereOption }
+func (opt whereOption) Value() any       { return opt }
+func Where(where string) Option {
+	return parseWhere(where)
+}
+
 func (opt addTargetsOption) Type() OptionType { return AddTargetsOption }
 func (opt addTargetsOption) Value() any       { return []any(opt) }
 func AddTargets(targets ...any) Option {
@@ -60,6 +90,7 @@ type ComposedOptions struct {
 	Fields     []string
 	Returning  []string
 	Prefix     string
+	Where      *whereOption
 	AddTargets []any
 }
 
@@ -68,6 +99,7 @@ func ComposeOptions(opts ...Option) ComposedOptions {
 		Exclude:    nil,
 		Fields:     nil,
 		Prefix:     "",
+		Where:      nil,
 		AddTargets: nil,
 	}
 	for _, opt := range opts {
@@ -83,6 +115,8 @@ func ComposeOptions(opts ...Option) ComposedOptions {
 			res.Returning = strings.Split(str, ",")
 		case prefixOption:
 			res.Prefix = string(opt)
+		case whereOption:
+			res.Where = &opt
 		case addTargetsOption:
 			res.AddTargets = opt
 		}
