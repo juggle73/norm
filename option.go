@@ -29,11 +29,12 @@ type (
 	whereOption     struct {
 		WhereString string
 		Binds       int
+		Args        []any
 	}
 	addTargetsOption []any
 )
 
-func parseWhere(where string) *whereOption {
+func parseWhere(where string, args ...any) *whereOption {
 	if where == "" {
 		return nil
 	}
@@ -46,6 +47,7 @@ func parseWhere(where string) *whereOption {
 	return &whereOption{
 		WhereString: where,
 		Binds:       count,
+		Args:        args,
 	}
 }
 
@@ -75,8 +77,8 @@ func Prefix(prefix string) Option {
 
 func (opt whereOption) Type() OptionType { return WhereOption }
 func (opt whereOption) Value() any       { return opt }
-func Where(where string) Option {
-	return parseWhere(where)
+func Where(where string, args ...any) Option {
+	return parseWhere(where, args...)
 }
 
 func (opt addTargetsOption) Type() OptionType { return AddTargetsOption }
