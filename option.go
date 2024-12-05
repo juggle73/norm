@@ -14,6 +14,8 @@ const (
 	PrefixOption
 	WhereOption
 	AddTargetsOption
+	OffsetOption
+	LimitOption
 )
 
 type Option interface {
@@ -32,6 +34,8 @@ type (
 		Args        []any
 	}
 	addTargetsOption []any
+	offsetOption     int
+	limitOption      int
 )
 
 func parseWhere(where string, args ...any) *whereOption {
@@ -87,6 +91,18 @@ func AddTargets(targets ...any) Option {
 	return addTargetsOption(targets)
 }
 
+func (opt offsetOption) Type() OptionType { return OffsetOption }
+func (opt offsetOption) Value() any       { return int(opt) }
+func Offset(offset int) Option {
+	return offsetOption(offset)
+}
+
+func (opt limitOption) Type() OptionType { return LimitOption }
+func (opt limitOption) Value() any       { return int(opt) }
+func Limit(limit int) Option {
+	return offsetOption(limit)
+}
+
 type ComposedOptions struct {
 	Exclude    []string
 	Fields     []string
@@ -94,6 +110,8 @@ type ComposedOptions struct {
 	Prefix     string
 	Where      *whereOption
 	AddTargets []any
+	Offset     int
+	Limit      int
 }
 
 func ComposeOptions(opts ...Option) ComposedOptions {
@@ -121,6 +139,10 @@ func ComposeOptions(opts ...Option) ComposedOptions {
 			res.Where = &opt
 		case addTargetsOption:
 			res.AddTargets = opt
+		case offsetOption:
+			res.Offset = int(opt)
+		case limitOption:
+			res.Limit = int(opt)
 		}
 	}
 
