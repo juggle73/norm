@@ -118,7 +118,8 @@ func (m *Model) Binds(opts ...Option) string {
 	co := ComposeOptions(opts...)
 
 	res := make([]string, 0)
-	for i, f := range m.fields {
+	idx := 1
+	for _, f := range m.fields {
 		if has(co.Exclude, f.dbName) {
 			continue
 		}
@@ -126,7 +127,8 @@ func (m *Model) Binds(opts ...Option) string {
 			continue
 		}
 
-		res = append(res, fmt.Sprintf("$%d", i+1))
+		res = append(res, fmt.Sprintf("$%d", idx))
+		idx++
 	}
 
 	return strings.Join(res, ", ")
