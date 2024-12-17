@@ -79,8 +79,8 @@ func Prefix(prefix string) Option {
 	return prefixOption(prefix)
 }
 
-func (opt whereOption) Type() OptionType { return WhereOption }
-func (opt whereOption) Value() any       { return opt }
+func (opt *whereOption) Type() OptionType { return WhereOption }
+func (opt *whereOption) Value() any       { return opt }
 func Where(where string, args ...any) Option {
 	return parseWhere(where, args...)
 }
@@ -135,8 +135,8 @@ func ComposeOptions(opts ...Option) ComposedOptions {
 			res.Returning = strings.Split(str, ",")
 		case prefixOption:
 			res.Prefix = string(opt)
-		case whereOption:
-			res.Where = &opt
+		case *whereOption:
+			res.Where = opt
 		case addTargetsOption:
 			res.AddTargets = opt
 		case offsetOption:
