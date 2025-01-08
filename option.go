@@ -100,7 +100,7 @@ func Offset(offset int) Option {
 func (opt limitOption) Type() OptionType { return LimitOption }
 func (opt limitOption) Value() any       { return int(opt) }
 func Limit(limit int) Option {
-	return offsetOption(limit)
+	return limitOption(limit)
 }
 
 type ComposedOptions struct {
