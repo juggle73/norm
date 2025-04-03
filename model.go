@@ -164,6 +164,16 @@ func (m *Model) Pointers(obj any, opts ...Option) []any {
 	return res
 }
 
+// Pointer find field by name in obj and returns field pointer
+func (m *Model) Pointer(obj any, name string) any {
+	val := reflect.ValueOf(obj)
+	if !isPointerToStruct(val) {
+		panic("Pointers: object must be a pointer to struct")
+	}
+
+	return val.Elem().FieldByName(name).Addr().Interface()
+}
+
 // Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
 func (m *Model) Values(obj any, opts ...Option) []any {
 	co := ComposeOptions(opts...)
