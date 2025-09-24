@@ -3,9 +3,11 @@ package norm
 import (
 	"errors"
 	"fmt"
-	"github.com/iancoleman/strcase"
 	"reflect"
 	"strings"
+	"sync"
+
+	"github.com/iancoleman/strcase"
 )
 
 // Model a struct to cache your struct reflect data
@@ -14,6 +16,7 @@ type Model struct {
 	valType        reflect.Type
 	fields         []*Field
 	fieldByAnyName map[string]*Field
+	mut            sync.RWMutex
 
 	config *Config
 	pk     []string
@@ -33,6 +36,9 @@ func (m *Model) Parse(obj any, table string) error {
 	if val.Kind() != reflect.Struct {
 		return errors.New("object must be a struct or pointer to struct")
 	}
+
+	m.mut.Lock()
+	defer m.mut.Unlock()
 
 	if table == "" {
 		m.table = strcase.ToSnake(val.Type().Name())
@@ -74,6 +80,9 @@ func (m *Model) Parse(obj any, table string) error {
 func (m *Model) Fields(opts ...Option) string {
 	co := ComposeOptions(opts...)
 
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
 	res := make([]string, 0)
 	for _, f := range m.fields {
 		if has(co.Exclude, f.dbName) {
@@ -94,6 +103,9 @@ func (m *Model) Fields(opts ...Option) string {
 // and next bind number
 func (m *Model) UpdateFields(opts ...Option) (string, int) {
 	co := ComposeOptions(opts...)
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
 
 	bind := 1
 	res := make([]string, 0)
@@ -116,6 +128,9 @@ func (m *Model) UpdateFields(opts ...Option) (string, int) {
 // specified in the parameter exclude
 func (m *Model) Binds(opts ...Option) string {
 	co := ComposeOptions(opts...)
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
 
 	res := make([]string, 0)
 	idx := 1
@@ -142,6 +157,9 @@ func (m *Model) Pointers(obj any, opts ...Option) []any {
 	if !isPointerToStruct(val) {
 		panic("Pointers: object must be a pointer to struct")
 	}
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
 
 	val = val.Elem()
 
@@ -183,6 +201,9 @@ func (m *Model) Values(obj any, opts ...Option) []any {
 		panic("FieldValues: object must be a pointer to struct")
 	}
 
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
 	val = val.Elem()
 
 	res := make([]any, 0)
@@ -212,11 +233,16 @@ func (m *Model) Table() string {
 
 // FieldByName trying to find field by name and returns the *Field or error
 func (m *Model) FieldByName(name string) (*Field, bool) {
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
 	v, ok := m.fieldByAnyName[name]
 	return v, ok
 }
 
 // FieldDescriptions returns the slice of *Field containing all model fields
 func (m *Model) FieldDescriptions() []*Field {
+	m.mut.RLock()
+	defer m.mut.RUnlock()
 	return m.fields
 }
