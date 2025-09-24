@@ -1,16 +1,17 @@
 package norm
 
 import (
-	"github.com/iancoleman/strcase"
 	"reflect"
 	"sync"
+
+	"github.com/iancoleman/strcase"
 )
 
 // Norm base struct
 type Norm struct {
 	models map[reflect.Type]*Model
 	tables map[string]*Model
-	mut    sync.Mutex
+	mut    sync.RWMutex
 	config *Config
 }
 
@@ -41,13 +42,13 @@ func (n *Norm) AddModel(obj any, table string) *Model {
 		panic(err)
 	}
 
+	n.mut.Lock()
+	defer n.mut.Unlock()
+
 	if n.models == nil {
 		n.models = make(map[reflect.Type]*Model)
 		n.tables = make(map[string]*Model)
 	}
-
-	n.mut.Lock()
-	defer n.mut.Unlock()
 	n.models[model.valType] = model
 	n.tables[table] = model
 
@@ -64,7 +65,9 @@ func (n *Norm) M(obj any) *Model {
 	if !isPointerToStruct(val) {
 		panic("obj must be pointer to struct")
 	}
+	n.mut.RLock()
 	model, ok := n.models[val.Elem().Type()]
+	n.mut.RUnlock()
 	if !ok {
 		model = n.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
 	}
@@ -76,12 +79,14 @@ func (n *Norm) M(obj any) *Model {
 //
 // If it was not found in the cache, then returns nil
 func (n *Norm) T(table string) *Model {
+	n.mut.RLock()
+	defer n.mut.RUnlock()
 	return n.tables[table]
 }
 
 func (n *Norm) Tables() []string {
-	n.mut.Lock()
-	defer n.mut.Unlock()
+	n.mut.RLock()
+	defer n.mut.RUnlock()
 	tables := make([]string, 0, len(n.tables))
 	for table := range n.tables {
 		tables = append(tables, table)
