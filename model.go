@@ -53,9 +53,26 @@ func (m *Model) Parse(obj any, table string) error {
 	m.pk = make([]string, 0)
 	m.unique = make([]string, 0)
 
-	c := val.NumField()
+	m.parseFields(val.Type())
+
+	return nil
+}
+
+// parseFields recursively parses struct fields, including embedded structs
+func (m *Model) parseFields(t reflect.Type) {
+	c := t.NumField()
 	for i := 0; i < c; i++ {
-		f := val.Type().Field(i)
+		f := t.Field(i)
+
+		// Recurse into embedded (anonymous) structs
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if f.Anonymous && ft.Kind() == reflect.Struct {
+			m.parseFields(ft)
+			continue
+		}
 
 		tagValues, ok := parseNormTag(f)
 		if !ok {
@@ -81,8 +98,6 @@ func (m *Model) Parse(obj any, table string) error {
 			m.unique = append(m.unique, field.dbName)
 		}
 	}
-
-	return nil
 }
 
 // filteredFields returns fields filtered by options and the composed options.
