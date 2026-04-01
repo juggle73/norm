@@ -149,13 +149,14 @@ func (m *Model) Binds(opts ...Option) string {
 	return strings.Join(res, ", ")
 }
 
-// Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude
-func (m *Model) Pointers(obj any, opts ...Option) ([]any, error) {
+// Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude.
+// Panics if obj is not a pointer to struct.
+func (m *Model) Pointers(obj any, opts ...Option) []any {
 	co := ComposeOptions(opts...)
 
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
-		return nil, errors.New("Pointers: object must be a pointer to struct")
+		panic("Pointers: object must be a pointer to struct")
 	}
 
 	m.mut.RLock()
@@ -179,26 +180,28 @@ func (m *Model) Pointers(obj any, opts ...Option) ([]any, error) {
 		res = append(res, p)
 	}
 
-	return res, nil
+	return res
 }
 
-// Pointer find field by name in obj and returns field pointer
-func (m *Model) Pointer(obj any, name string) (any, error) {
+// Pointer find field by name in obj and returns field pointer.
+// Panics if obj is not a pointer to struct.
+func (m *Model) Pointer(obj any, name string) any {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
-		return nil, errors.New("Pointer: object must be a pointer to struct")
+		panic("Pointer: object must be a pointer to struct")
 	}
 
-	return val.Elem().FieldByName(name).Addr().Interface(), nil
+	return val.Elem().FieldByName(name).Addr().Interface()
 }
 
-// Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude
-func (m *Model) Values(obj any, opts ...Option) ([]any, error) {
+// Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude.
+// Panics if obj is not a pointer to struct.
+func (m *Model) Values(obj any, opts ...Option) []any {
 	co := ComposeOptions(opts...)
 
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
-		return nil, errors.New("Values: object must be a pointer to struct")
+		panic("Values: object must be a pointer to struct")
 	}
 
 	m.mut.RLock()
@@ -218,7 +221,7 @@ func (m *Model) Values(obj any, opts ...Option) ([]any, error) {
 		res = append(res, val.FieldByName(f.name).Interface())
 	}
 
-	return res, nil
+	return res
 }
 
 // NewInstance creates and returns new instance of struct
