@@ -5,9 +5,11 @@ import (
 )
 
 type CondTestStruct struct {
-	Id   int    `norm:"pk"`
-	Name string `norm:"notnull"`
-	Age  int
+	Id     int     `norm:"pk"`
+	Name   string  `norm:"notnull"`
+	Age    int
+	Active bool
+	Score  float64
 }
 
 func newCondTestModel() *Model {
@@ -196,5 +198,82 @@ func TestBuildConditions_IntIsNull(t *testing.T) {
 	}, "")
 	if len(conds) != 1 || conds[0] != "age IS NULL" {
 		t.Errorf("got %v", conds)
+	}
+}
+
+func TestBuildConditions_BoolEquality(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(map[string]any{
+		"active": true,
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if conds[0] != "active=$1" {
+		t.Errorf("got %q", conds[0])
+	}
+	if len(vals) != 1 || vals[0] != true {
+		t.Errorf("unexpected vals: %v", vals)
+	}
+}
+
+func TestBuildConditions_BoolIsNull(t *testing.T) {
+	m := newCondTestModel()
+
+	conds, _ := m.BuildConditions(map[string]any{
+		"active": map[string]any{"isNull": true},
+	}, "")
+	if len(conds) != 1 || conds[0] != "active IS NULL" {
+		t.Errorf("got %v", conds)
+	}
+}
+
+func TestBuildConditions_FloatEquality(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(map[string]any{
+		"score": 9.5,
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if conds[0] != "score=$1" {
+		t.Errorf("got %q", conds[0])
+	}
+	if len(vals) != 1 || vals[0] != 9.5 {
+		t.Errorf("unexpected vals: %v", vals)
+	}
+}
+
+func TestBuildConditions_FloatComparison(t *testing.T) {
+	m := newCondTestModel()
+
+	conds, vals := m.BuildConditions(map[string]any{
+		"score": map[string]any{"gte": 5.0, "lt": 10.0},
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if len(vals) != 2 {
+		t.Fatalf("expected 2 vals, got %d", len(vals))
+	}
+}
+
+func TestBuildConditions_FloatIn(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(map[string]any{
+		"score": []any{1.0, 2.5, 3.7},
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if conds[0] != "score IN ($1, $2, $3)" {
+		t.Errorf("got %q", conds[0])
+	}
+	if len(vals) != 3 {
+		t.Errorf("expected 3 vals, got %d", len(vals))
 	}
 }
