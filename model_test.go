@@ -14,7 +14,11 @@ type ModelTestStruct struct {
 
 func newTestModel() *Model {
 	n := NewNorm(nil)
-	return n.M(&ModelTestStruct{})
+	m, err := n.M(&ModelTestStruct{})
+	if err != nil {
+		panic(err)
+	}
+	return m
 }
 
 func TestParse(t *testing.T) {
@@ -150,14 +154,20 @@ func TestPointers(t *testing.T) {
 	obj := &ModelTestStruct{Id: 1, Name: "John", Email: "john@test.com", Age: 30}
 
 	t.Run("returns correct count", func(t *testing.T) {
-		ptrs := m.Pointers(obj)
+		ptrs, err := m.Pointers(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(ptrs) != 4 {
 			t.Fatalf("expected 4 pointers, got %d", len(ptrs))
 		}
 	})
 
 	t.Run("pointers point to correct fields", func(t *testing.T) {
-		ptrs := m.Pointers(obj)
+		ptrs, err := m.Pointers(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
 		// Writing through pointers should modify the original
 		*(ptrs[0].(*int)) = 99
 		if obj.Id != 99 {
@@ -170,7 +180,10 @@ func TestPointers(t *testing.T) {
 	})
 
 	t.Run("with exclude", func(t *testing.T) {
-		ptrs := m.Pointers(obj, Exclude("id"))
+		ptrs, err := m.Pointers(obj, Exclude("id"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(ptrs) != 3 {
 			t.Errorf("expected 3 pointers, got %d", len(ptrs))
 		}
@@ -178,19 +191,20 @@ func TestPointers(t *testing.T) {
 
 	t.Run("with add targets", func(t *testing.T) {
 		var extra int
-		ptrs := m.Pointers(obj, AddTargets(&extra))
+		ptrs, err := m.Pointers(obj, AddTargets(&extra))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(ptrs) != 5 {
 			t.Errorf("expected 5 pointers (4+1), got %d", len(ptrs))
 		}
 	})
 
-	t.Run("panics on non-pointer", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic")
-			}
-		}()
-		m.Pointers(ModelTestStruct{})
+	t.Run("error on non-pointer", func(t *testing.T) {
+		_, err := m.Pointers(ModelTestStruct{})
+		if err == nil {
+			t.Error("expected error for non-pointer")
+		}
 	})
 }
 
@@ -199,7 +213,10 @@ func TestValues(t *testing.T) {
 	obj := &ModelTestStruct{Id: 1, Name: "John", Email: "john@test.com", Age: 30}
 
 	t.Run("returns correct values", func(t *testing.T) {
-		vals := m.Values(obj)
+		vals, err := m.Values(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(vals) != 4 {
 			t.Fatalf("expected 4 values, got %d", len(vals))
 		}
@@ -218,7 +235,10 @@ func TestValues(t *testing.T) {
 	})
 
 	t.Run("with exclude", func(t *testing.T) {
-		vals := m.Values(obj, Exclude("id"))
+		vals, err := m.Values(obj, Exclude("id"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(vals) != 3 {
 			t.Fatalf("expected 3 values, got %d", len(vals))
 		}
@@ -228,12 +248,22 @@ func TestValues(t *testing.T) {
 	})
 
 	t.Run("with fields filter", func(t *testing.T) {
-		vals := m.Values(obj, Fields("id,name"))
+		vals, err := m.Values(obj, Fields("id,name"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(vals) != 2 {
 			t.Fatalf("expected 2 values, got %d", len(vals))
 		}
 		if vals[0] != 1 || vals[1] != "John" {
 			t.Errorf("unexpected values: %v", vals)
+		}
+	})
+
+	t.Run("error on non-pointer", func(t *testing.T) {
+		_, err := m.Values(ModelTestStruct{})
+		if err == nil {
+			t.Error("expected error for non-pointer")
 		}
 	})
 }
@@ -243,9 +273,19 @@ func TestPointer(t *testing.T) {
 	obj := &ModelTestStruct{Id: 42, Name: "Test"}
 
 	t.Run("returns correct pointer", func(t *testing.T) {
-		p := m.Pointer(obj, "Id")
+		p, err := m.Pointer(obj, "Id")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if *(p.(*int)) != 42 {
 			t.Errorf("expected 42, got %v", *(p.(*int)))
+		}
+	})
+
+	t.Run("error on non-pointer", func(t *testing.T) {
+		_, err := m.Pointer(ModelTestStruct{}, "Id")
+		if err == nil {
+			t.Error("expected error for non-pointer")
 		}
 	})
 }

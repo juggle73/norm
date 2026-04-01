@@ -45,27 +45,28 @@ func TestM(t *testing.T) {
 	n := NewNorm(nil)
 
 	t.Run("auto table name", func(t *testing.T) {
-		m := n.M(&TestUser{})
+		m, err := n.M(&TestUser{})
+		if err != nil {
+			t.Fatal(err)
+		}
 		if m.Table() != "test_user" {
 			t.Errorf("expected table 'test_user', got %q", m.Table())
 		}
 	})
 
 	t.Run("cached on second call", func(t *testing.T) {
-		m1 := n.M(&TestUser{})
-		m2 := n.M(&TestUser{})
+		m1, _ := n.M(&TestUser{})
+		m2, _ := n.M(&TestUser{})
 		if m1 != m2 {
 			t.Error("expected same model pointer from cache")
 		}
 	})
 
-	t.Run("panics on non-pointer", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic for non-pointer")
-			}
-		}()
-		n.M(TestUser{})
+	t.Run("error on non-pointer", func(t *testing.T) {
+		_, err := n.M(TestUser{})
+		if err == nil {
+			t.Error("expected error for non-pointer")
+		}
 	})
 }
 
