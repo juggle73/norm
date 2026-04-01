@@ -246,6 +246,45 @@ func (m *Model) FieldByName(name string) (*Field, bool) {
 	return v, ok
 }
 
+// Returning validates field names and returns a RETURNING clause string.
+// Panics if a field is not found in the model.
+func (m *Model) Returning(opts ...Option) string {
+	co := ComposeOptions(opts...)
+	if len(co.Returning) == 0 {
+		return ""
+	}
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	res := make([]string, 0, len(co.Returning))
+	for _, name := range co.Returning {
+		name = strings.TrimSpace(name)
+		field, ok := m.fieldByAnyName[name]
+		if !ok {
+			panic(fmt.Sprintf("Returning: unknown field %q", name))
+		}
+		res = append(res, field.dbName)
+	}
+
+	return "RETURNING " + strings.Join(res, ", ")
+}
+
+// LimitOffset returns a LIMIT/OFFSET clause string from options.
+func (m *Model) LimitOffset(opts ...Option) string {
+	co := ComposeOptions(opts...)
+
+	var parts []string
+	if co.Limit > 0 {
+		parts = append(parts, fmt.Sprintf("LIMIT %d", co.Limit))
+	}
+	if co.Offset > 0 {
+		parts = append(parts, fmt.Sprintf("OFFSET %d", co.Offset))
+	}
+
+	return strings.Join(parts, " ")
+}
+
 // FieldDescriptions returns the slice of *Field containing all model fields
 func (m *Model) FieldDescriptions() []*Field {
 	m.mut.RLock()

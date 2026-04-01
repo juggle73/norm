@@ -400,6 +400,79 @@ func TestEmbeddedPointerStruct(t *testing.T) {
 	}
 }
 
+func TestReturning(t *testing.T) {
+	m := newTestModel()
+
+	t.Run("no returning option", func(t *testing.T) {
+		got := m.Returning()
+		if got != "" {
+			t.Errorf("expected empty, got %q", got)
+		}
+	})
+
+	t.Run("single field", func(t *testing.T) {
+		got := m.Returning(Returning("Id"))
+		if got != "RETURNING id" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("multiple fields", func(t *testing.T) {
+		got := m.Returning(Returning("Id,Name"))
+		if got != "RETURNING id, name" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("by db name", func(t *testing.T) {
+		got := m.Returning(Returning("email"))
+		if got != "RETURNING email" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("panics on unknown field", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic")
+			}
+		}()
+		m.Returning(Returning("nonexistent"))
+	})
+}
+
+func TestLimitOffset(t *testing.T) {
+	m := newTestModel()
+
+	t.Run("no options", func(t *testing.T) {
+		got := m.LimitOffset()
+		if got != "" {
+			t.Errorf("expected empty, got %q", got)
+		}
+	})
+
+	t.Run("limit only", func(t *testing.T) {
+		got := m.LimitOffset(Limit(10))
+		if got != "LIMIT 10" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("offset only", func(t *testing.T) {
+		got := m.LimitOffset(Offset(5))
+		if got != "OFFSET 5" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("both", func(t *testing.T) {
+		got := m.LimitOffset(Limit(10), Offset(20))
+		if got != "LIMIT 10 OFFSET 20" {
+			t.Errorf("got %q", got)
+		}
+	})
+}
+
 func TestOrderBy(t *testing.T) {
 	m := newTestModel()
 
