@@ -147,6 +147,25 @@ func TestMigrate_AllFieldsExist(t *testing.T) {
 	}
 }
 
+func TestCreateTableSQL_UintTypes(t *testing.T) {
+	type WithUints struct {
+		Id    int    `norm:"pk"`
+		Count uint
+		Big   uint64
+	}
+
+	n := NewNorm(nil)
+	m := n.AddModel(&WithUints{}, "with_uints")
+	sql := m.CreateTableSQL()
+
+	if !strings.Contains(sql, "count integer") {
+		t.Errorf("missing uint type:\n%s", sql)
+	}
+	if !strings.Contains(sql, "big bigint") {
+		t.Errorf("missing uint64 type:\n%s", sql)
+	}
+}
+
 func TestCreateTableSQL_FloatTypes(t *testing.T) {
 	type WithFloats struct {
 		Id    int     `norm:"pk"`

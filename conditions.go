@@ -69,7 +69,8 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 	switch vType.Kind() {
 	case reflect.String:
 		res = b.stringCondition(val)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		res = b.intCondition(val)
 	case reflect.Float32, reflect.Float64:
 		res = b.floatCondition(val)
@@ -139,7 +140,8 @@ func (b *conditionBuilder) intCondition(val reflect.Value) []string {
 	res := make([]string, 0)
 
 	switch val.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		b.values = append(b.values, val.Interface())
 		res = append(res, fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
 	case reflect.Map:
@@ -155,7 +157,8 @@ func (b *conditionBuilder) intCondition(val reflect.Value) []string {
 			switch k.String() {
 			case "gt", "gte", "lt", "lte", "ne":
 				switch v.Elem().Kind() {
-				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 					if localRes != "" {
 						localRes += " AND "
 					}

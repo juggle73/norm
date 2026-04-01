@@ -10,6 +10,7 @@ type CondTestStruct struct {
 	Age    int
 	Active bool
 	Score  float64
+	Count  uint
 }
 
 func newCondTestModel() *Model {
@@ -271,6 +272,57 @@ func TestBuildConditions_FloatIn(t *testing.T) {
 		t.Fatalf("expected 1 condition, got %d", len(conds))
 	}
 	if conds[0] != "score IN ($1, $2, $3)" {
+		t.Errorf("got %q", conds[0])
+	}
+	if len(vals) != 3 {
+		t.Errorf("expected 3 vals, got %d", len(vals))
+	}
+}
+
+func TestBuildConditions_UintEquality(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(map[string]any{
+		"count": uint(42),
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if conds[0] != "count=$1" {
+		t.Errorf("got %q", conds[0])
+	}
+	if len(vals) != 1 || vals[0] != uint(42) {
+		t.Errorf("unexpected vals: %v", vals)
+	}
+}
+
+func TestBuildConditions_UintComparison(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(map[string]any{
+		"count": map[string]any{"gte": uint(10)},
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if conds[0] != "count >= $1" {
+		t.Errorf("got %q", conds[0])
+	}
+	if len(vals) != 1 {
+		t.Errorf("expected 1 val, got %d", len(vals))
+	}
+}
+
+func TestBuildConditions_UintIn(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(map[string]any{
+		"count": []any{uint(1), uint(2), uint(3)},
+	}, "")
+
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(conds))
+	}
+	if conds[0] != "count IN ($1, $2, $3)" {
 		t.Errorf("got %q", conds[0])
 	}
 	if len(vals) != 3 {
