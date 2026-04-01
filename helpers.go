@@ -66,6 +66,19 @@ func parseNormTag(field reflect.StructField) (map[string]string, bool) {
 	return res, true
 }
 
+// isValidIdentifier checks that name contains only [a-zA-Z0-9_] and is not empty
+func isValidIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 // indirectType returns the type that v points to.
 func indirectType(v reflect.Type) reflect.Type {
 	for v.Kind() == reflect.Pointer {
