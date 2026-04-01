@@ -10,9 +10,11 @@ import (
 
 // dbTypes is map of some reflect.Kind to PostgreSQL types
 var dbTypes = map[reflect.Kind]string{
-	reflect.Int64: "bigint",
-	reflect.Int:   "integer",
-	reflect.Bool:  "boolean",
+	reflect.Int64:   "bigint",
+	reflect.Int:     "integer",
+	reflect.Bool:    "boolean",
+	reflect.Float32: "real",
+	reflect.Float64: "double precision",
 }
 
 // CreateTableSQL generates CREATE TABLE sql expression for Model

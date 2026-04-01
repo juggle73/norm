@@ -147,6 +147,25 @@ func TestMigrate_AllFieldsExist(t *testing.T) {
 	}
 }
 
+func TestCreateTableSQL_FloatTypes(t *testing.T) {
+	type WithFloats struct {
+		Id    int     `norm:"pk"`
+		Score float64
+		Rate  float32
+	}
+
+	n := NewNorm(nil)
+	m := n.AddModel(&WithFloats{}, "with_floats")
+	sql := m.CreateTableSQL()
+
+	if !strings.Contains(sql, "score double precision") {
+		t.Errorf("missing float64 type:\n%s", sql)
+	}
+	if !strings.Contains(sql, "rate real") {
+		t.Errorf("missing float32 type:\n%s", sql)
+	}
+}
+
 func TestCreateTableSQL_PointerField(t *testing.T) {
 	type WithPointer struct {
 		Id   int     `norm:"pk"`
