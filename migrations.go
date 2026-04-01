@@ -17,9 +17,6 @@ var dbTypes = map[reflect.Kind]string{
 
 // CreateTableSQL generates CREATE TABLE sql expression for Model
 func (m *Model) CreateTableSQL() string {
-	m.pk = make([]string, 0)
-	m.unique = make([]string, 0)
-
 	fields := make([]string, 0)
 
 	for _, f := range m.fields {
@@ -46,9 +43,6 @@ func (m *Model) CreateTableSQL() string {
 //
 //	Important! Migrate does not support field deletion and field data type change
 func (m *Model) Migrate(dbFieldNames []string) []string {
-	m.pk = make([]string, 0)
-	m.unique = make([]string, 0)
-
 	statements := make([]string, 0)
 
 	// New table
@@ -104,13 +98,6 @@ func (m *Model) fieldCreate(t reflect.Type, f *Field) string {
 				dt = fmt.Sprintf("<not supported type %s>", t.Kind().String())
 			}
 		}
-	}
-
-	if _, ok = f.tagValues["pk"]; ok {
-		m.pk = append(m.pk, f.dbName)
-	}
-	if _, ok = f.tagValues["unique"]; ok {
-		m.unique = append(m.unique, f.dbName)
 	}
 
 	res = fmt.Sprintf("%s %s", f.dbName, dt)
