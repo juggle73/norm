@@ -12,6 +12,8 @@ import (
 var dbTypes = map[reflect.Kind]string{
 	reflect.Int64:   "bigint",
 	reflect.Int:     "integer",
+	reflect.Uint64:  "bigint",
+	reflect.Uint:    "integer",
 	reflect.Bool:    "boolean",
 	reflect.Float32: "real",
 	reflect.Float64: "double precision",
