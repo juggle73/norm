@@ -314,6 +314,105 @@ func TestFieldByName(t *testing.T) {
 	})
 }
 
+func TestEmbeddedStruct(t *testing.T) {
+	type BaseModel struct {
+		Id        int `norm:"pk"`
+		CreatedAt string
+	}
+	type User struct {
+		BaseModel
+		Name  string
+		Email string `norm:"unique"`
+	}
+
+	n := NewNorm(nil)
+	m, err := n.M(&User{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("includes embedded fields", func(t *testing.T) {
+		fields := m.FieldDescriptions()
+		if len(fields) != 4 {
+			names := make([]string, len(fields))
+			for i, f := range fields {
+				names[i] = f.Name()
+			}
+			t.Fatalf("expected 4 fields (Id, CreatedAt, Name, Email), got %d: %v", len(fields), names)
+		}
+	})
+
+	t.Run("fields query includes embedded", func(t *testing.T) {
+		got := m.Fields()
+		want := "id, created_at, name, email"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("pk from embedded struct", func(t *testing.T) {
+		sql := m.CreateTableSQL()
+		if !contains(sql, "PRIMARY KEY(id)") {
+			t.Errorf("missing pk from embedded struct in:\n%s", sql)
+		}
+	})
+
+	t.Run("unique from outer struct", func(t *testing.T) {
+		sql := m.CreateTableSQL()
+		if !contains(sql, "UNIQUE(email)") {
+			t.Errorf("missing unique from outer struct in:\n%s", sql)
+		}
+	})
+
+	t.Run("pointers work with embedded fields", func(t *testing.T) {
+		u := &User{BaseModel: BaseModel{Id: 42, CreatedAt: "2024-01-01"}, Name: "John", Email: "j@t.com"}
+		vals := m.Values(u)
+		if vals[0] != 42 {
+			t.Errorf("expected Id=42, got %v", vals[0])
+		}
+		if vals[1] != "2024-01-01" {
+			t.Errorf("expected CreatedAt, got %v", vals[1])
+		}
+	})
+}
+
+func TestEmbeddedPointerStruct(t *testing.T) {
+	type Base struct {
+		Id int `norm:"pk"`
+	}
+	type Child struct {
+		*Base
+		Name string
+	}
+
+	n := NewNorm(nil)
+	m, err := n.M(&Child{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fields := m.FieldDescriptions()
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(fields))
+	}
+	if fields[0].Name() != "Id" || fields[1].Name() != "Name" {
+		t.Errorf("unexpected fields: %s, %s", fields[0].Name(), fields[1].Name())
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
+}
+
+func containsStr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestNewInstance(t *testing.T) {
 	m := newTestModel()
 	inst := m.NewInstance()
