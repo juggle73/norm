@@ -91,6 +91,17 @@ func TestT(t *testing.T) {
 	})
 }
 
+func TestAddModel_InvalidTableName(t *testing.T) {
+	n := NewNorm(nil)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for invalid table name")
+		}
+	}()
+	n.AddModel(&TestUser{}, "users; DROP TABLE")
+}
+
 func TestTables(t *testing.T) {
 	n := NewNorm(nil)
 

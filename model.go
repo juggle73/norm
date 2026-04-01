@@ -45,6 +45,9 @@ func (m *Model) Parse(obj any, table string) error {
 	} else {
 		m.table = table
 	}
+	if !isValidIdentifier(m.table) {
+		panic(fmt.Sprintf("invalid table name %q: must contain only [a-zA-Z0-9_]", m.table))
+	}
 	m.fields = make([]*Field, 0)
 	m.fieldByAnyName = make(map[string]*Field)
 
@@ -79,10 +82,15 @@ func (m *Model) parseFields(t reflect.Type) {
 			continue
 		}
 
+		dbName := tagValues["dbName"]
+		if !isValidIdentifier(dbName) {
+			panic(fmt.Sprintf("invalid db column name %q for field %s: must contain only [a-zA-Z0-9_]", dbName, f.Name))
+		}
+
 		field := &Field{
 			valType:   f.Type,
 			name:      f.Name,
-			dbName:    tagValues["dbName"],
+			dbName:    dbName,
 			tagValues: tagValues,
 		}
 

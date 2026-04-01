@@ -153,6 +153,35 @@ func TestParseNormTag(t *testing.T) {
 	})
 }
 
+func TestIsValidIdentifier(t *testing.T) {
+	tests := []struct {
+		name string
+		val  string
+		want bool
+	}{
+		{"valid simple", "users", true},
+		{"valid with underscore", "user_name", true},
+		{"valid with digits", "table1", true},
+		{"valid mixed", "User_Name_2", true},
+		{"empty", "", false},
+		{"with space", "user name", false},
+		{"with semicolon", "users;DROP", false},
+		{"with dash", "user-name", false},
+		{"with dot", "schema.table", false},
+		{"with quotes", "users\"", false},
+		{"sql injection", "users; DROP TABLE users--", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidIdentifier(tt.val)
+			if got != tt.want {
+				t.Errorf("isValidIdentifier(%q) = %v, want %v", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIndirectType(t *testing.T) {
 	var i int
 	var pi *int
