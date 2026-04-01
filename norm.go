@@ -1,6 +1,7 @@
 package norm
 
 import (
+	"errors"
 	"reflect"
 	"sync"
 
@@ -60,10 +61,10 @@ func (n *Norm) AddModel(obj any, table string) *Model {
 //	obj - must be a pointer to a struct.
 //
 // If Model for the object was not found in the cache, then a new model is created and added to the cache.
-func (n *Norm) M(obj any) *Model {
+func (n *Norm) M(obj any) (*Model, error) {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
-		panic("obj must be pointer to struct")
+		return nil, errors.New("obj must be pointer to struct")
 	}
 	n.mut.RLock()
 	model, ok := n.models[val.Elem().Type()]
@@ -72,7 +73,7 @@ func (n *Norm) M(obj any) *Model {
 		model = n.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
 	}
 
-	return model
+	return model, nil
 }
 
 // T trying to find registered model by table name and returns *Model for object

@@ -12,7 +12,11 @@ type CondTestStruct struct {
 
 func newCondTestModel() *Model {
 	n := NewNorm(nil)
-	return n.M(&CondTestStruct{})
+	m, err := n.M(&CondTestStruct{})
+	if err != nil {
+		panic(err)
+	}
+	return m
 }
 
 func TestBuildConditions_StringEquality(t *testing.T) {
