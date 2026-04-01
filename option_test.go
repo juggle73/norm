@@ -14,21 +14,23 @@ func TestParseWhere(t *testing.T) {
 
 	t.Run("no placeholders", func(t *testing.T) {
 		w := parseWhere("id=1")
-		if w.WhereString != "id=1" {
-			t.Errorf("got %q", w.WhereString)
+		s, next := w.Build(1)
+		if s != "id=1" {
+			t.Errorf("got %q", s)
 		}
-		if w.Binds != 0 {
-			t.Errorf("expected 0 binds, got %d", w.Binds)
+		if next != 1 {
+			t.Errorf("expected next=1, got %d", next)
 		}
 	})
 
-	t.Run("single placeholder", func(t *testing.T) {
+	t.Run("single placeholder from 1", func(t *testing.T) {
 		w := parseWhere("name = ?", "John")
-		if w.WhereString != "name = $1" {
-			t.Errorf("got %q", w.WhereString)
+		s, next := w.Build(1)
+		if s != "name = $1" {
+			t.Errorf("got %q", s)
 		}
-		if w.Binds != 1 {
-			t.Errorf("expected 1 bind, got %d", w.Binds)
+		if next != 2 {
+			t.Errorf("expected next=2, got %d", next)
 		}
 		if len(w.Args) != 1 || w.Args[0] != "John" {
 			t.Errorf("unexpected args: %v", w.Args)
@@ -37,11 +39,23 @@ func TestParseWhere(t *testing.T) {
 
 	t.Run("multiple placeholders", func(t *testing.T) {
 		w := parseWhere("age > ? AND name = ?", 18, "John")
-		if w.WhereString != "age > $1 AND name = $2" {
-			t.Errorf("got %q", w.WhereString)
+		s, next := w.Build(1)
+		if s != "age > $1 AND name = $2" {
+			t.Errorf("got %q", s)
 		}
-		if w.Binds != 2 {
-			t.Errorf("expected 2 binds, got %d", w.Binds)
+		if next != 3 {
+			t.Errorf("expected next=3, got %d", next)
+		}
+	})
+
+	t.Run("start from offset", func(t *testing.T) {
+		w := parseWhere("name = ? AND age > ?", "John", 18)
+		s, next := w.Build(4)
+		if s != "name = $4 AND age > $5" {
+			t.Errorf("got %q", s)
+		}
+		if next != 6 {
+			t.Errorf("expected next=6, got %d", next)
 		}
 	})
 }
@@ -83,8 +97,9 @@ func TestComposeOptions(t *testing.T) {
 		if co.Where == nil {
 			t.Fatal("expected where to be set")
 		}
-		if co.Where.WhereString != "id = $1" {
-			t.Errorf("got %q", co.Where.WhereString)
+		s, _ := co.Where.Build(1)
+		if s != "id = $1" {
+			t.Errorf("got %q", s)
 		}
 	})
 

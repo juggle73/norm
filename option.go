@@ -28,10 +28,9 @@ type (
 	fieldsOption    string
 	returningOption string
 	prefixOption    string
-	whereOption     struct {
-		WhereString string
-		Binds       int
-		Args        []any
+	whereOption struct {
+		template string // original where with "?" placeholders
+		Args     []any
 	}
 	addTargetsOption []any
 	offsetOption     int
@@ -43,16 +42,23 @@ func parseWhere(where string, args ...any) *whereOption {
 		return nil
 	}
 
-	count := strings.Count(where, "?")
-	for bind := 1; bind <= count; bind++ {
-		where = strings.Replace(where, "?", fmt.Sprintf("$%d", bind), 1)
-	}
-
 	return &whereOption{
-		WhereString: where,
-		Binds:       count,
-		Args:        args,
+		template: where,
+		Args:     args,
 	}
+}
+
+// Build renders the where clause, replacing "?" with "$<N>" starting from startBind.
+// Returns the rendered string and the next bind number.
+func (w *whereOption) Build(startBind int) (string, int) {
+	result := w.template
+	bind := startBind
+	count := strings.Count(result, "?")
+	for i := 0; i < count; i++ {
+		result = strings.Replace(result, "?", fmt.Sprintf("$%d", bind), 1)
+		bind++
+	}
+	return result, bind
 }
 
 func (opt excludeOption) Type() OptionType { return ExcludeOption }
