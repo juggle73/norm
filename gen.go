@@ -3,10 +3,10 @@ package norm
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/iancoleman/strcase"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"log"
-	"strings"
 )
 
 //select column_name, is_nullable, data_type, character_maximum_length, numeric_precision from information_schema.columns where table_name='matches' order by ordinal_position;
@@ -87,12 +87,12 @@ func (n *Norm) Gen(packageName, structName string, cols []Col) string {
 }
 
 // GenFromDb generates golang source code describing struct with fields for all tables in specified schemaName
-func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map[string]string {
+func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) (map[string]string, error) {
 
 	rows, err := pool.Query(context.Background(),
 		"select tablename from pg_tables where schemaname=$1", schemaName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("query tables: %w", err)
 	}
 	defer rows.Close()
 
@@ -102,15 +102,15 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 	for rows.Next() {
 		err = rows.Scan(&tableName)
 		if err != nil {
-			log.Fatal(err)
+			return nil, fmt.Errorf("scan table name: %w", err)
 		}
 
 		colsRows, err := pool.Query(context.Background(),
-			`select column_name, is_nullable, data_type 
-				from information_schema.columns 
+			`select column_name, is_nullable, data_type
+				from information_schema.columns
 				where table_name=$1 order by ordinal_position`, tableName)
 		if err != nil {
-			log.Fatal(err)
+			return nil, fmt.Errorf("query columns for %s: %w", tableName, err)
 		}
 
 		cols := make([]Col, 0)
@@ -122,7 +122,8 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 				&col.IsNullable,
 				&col.DataType)
 			if err != nil {
-				log.Fatal(err)
+				colsRows.Close()
+				return nil, fmt.Errorf("scan column for %s: %w", tableName, err)
 			}
 			cols = append(cols, col)
 		}
@@ -131,5 +132,5 @@ func (n *Norm) GenFromDb(pool *pgxpool.Pool, packageName, schemaName string) map
 		res[tableName] = n.Gen(packageName, strcase.ToCamel(tableName), cols)
 	}
 
-	return res
+	return res, nil
 }
