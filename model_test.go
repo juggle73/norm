@@ -400,6 +400,79 @@ func TestEmbeddedPointerStruct(t *testing.T) {
 	}
 }
 
+func TestOrderBy(t *testing.T) {
+	m := newTestModel()
+
+	t.Run("single field default ASC", func(t *testing.T) {
+		got := m.OrderBy("Name")
+		if got != "name ASC" {
+			t.Errorf("got %q, want %q", got, "name ASC")
+		}
+	})
+
+	t.Run("single field explicit DESC", func(t *testing.T) {
+		got := m.OrderBy("Name DESC")
+		if got != "name DESC" {
+			t.Errorf("got %q, want %q", got, "name DESC")
+		}
+	})
+
+	t.Run("multiple fields", func(t *testing.T) {
+		got := m.OrderBy("Name ASC, Age DESC")
+		if got != "name ASC, age DESC" {
+			t.Errorf("got %q, want %q", got, "name ASC, age DESC")
+		}
+	})
+
+	t.Run("by db name", func(t *testing.T) {
+		got := m.OrderBy("email DESC")
+		if got != "email DESC" {
+			t.Errorf("got %q, want %q", got, "email DESC")
+		}
+	})
+
+	t.Run("case insensitive direction", func(t *testing.T) {
+		got := m.OrderBy("Name asc")
+		if got != "name ASC" {
+			t.Errorf("got %q, want %q", got, "name ASC")
+		}
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		got := m.OrderBy("")
+		if got != "" {
+			t.Errorf("got %q, want empty", got)
+		}
+	})
+
+	t.Run("panics on unknown field", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic for unknown field")
+			}
+		}()
+		m.OrderBy("nonexistent ASC")
+	})
+
+	t.Run("panics on invalid direction", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic for invalid direction")
+			}
+		}()
+		m.OrderBy("Name SIDEWAYS")
+	})
+
+	t.Run("panics on invalid format", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic for invalid format")
+			}
+		}()
+		m.OrderBy("Name ASC extra")
+	})
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
 }

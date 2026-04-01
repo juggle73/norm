@@ -252,3 +252,49 @@ func (m *Model) FieldDescriptions() []*Field {
 	defer m.mut.RUnlock()
 	return m.fields
 }
+
+// OrderBy parses and validates an order by clause string.
+// Each entry must be "fieldName [ASC|DESC]". Field names are validated
+// against the model and converted to database column names.
+// Panics if a field is not found or direction is invalid.
+func (m *Model) OrderBy(orderBy string) string {
+	orderBy = strings.TrimSpace(orderBy)
+	if orderBy == "" {
+		return ""
+	}
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	parts := strings.Split(orderBy, ",")
+	res := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		tokens := strings.Fields(strings.TrimSpace(part))
+		if len(tokens) == 0 {
+			continue
+		}
+
+		fieldName := tokens[0]
+		direction := "ASC"
+
+		if len(tokens) == 2 {
+			direction = strings.ToUpper(tokens[1])
+		} else if len(tokens) > 2 {
+			panic(fmt.Sprintf("OrderBy: invalid format %q", part))
+		}
+
+		if direction != "ASC" && direction != "DESC" {
+			panic(fmt.Sprintf("OrderBy: invalid direction %q, must be ASC or DESC", direction))
+		}
+
+		field, ok := m.fieldByAnyName[fieldName]
+		if !ok {
+			panic(fmt.Sprintf("OrderBy: unknown field %q", fieldName))
+		}
+
+		res = append(res, field.dbName+" "+direction)
+	}
+
+	return strings.Join(res, ", ")
+}
