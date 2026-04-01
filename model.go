@@ -85,15 +85,12 @@ func (m *Model) Parse(obj any, table string) error {
 	return nil
 }
 
-// Fields returns slice of fields database names with prefix in snake-case, excluding
-// specified in the parameter exclude
-func (m *Model) Fields(opts ...Option) string {
+// filteredFields returns fields filtered by options and the composed options.
+// Must be called under m.mut.RLock.
+func (m *Model) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 	co := ComposeOptions(opts...)
 
-	m.mut.RLock()
-	defer m.mut.RUnlock()
-
-	res := make([]string, 0)
+	res := make([]*Field, 0, len(m.fields))
 	for _, f := range m.fields {
 		if has(co.Exclude, f.dbName) {
 			continue
@@ -101,7 +98,22 @@ func (m *Model) Fields(opts ...Option) string {
 		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
 			continue
 		}
+		res = append(res, f)
+	}
 
+	return res, co
+}
+
+// Fields returns slice of fields database names with prefix in snake-case, excluding
+// specified in the parameter exclude
+func (m *Model) Fields(opts ...Option) string {
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	ff, co := m.filteredFields(opts...)
+
+	res := make([]string, 0, len(ff))
+	for _, f := range ff {
 		res = append(res, co.Prefix+f.dbName)
 	}
 
@@ -112,48 +124,30 @@ func (m *Model) Fields(opts ...Option) string {
 // in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude,
 // and next bind number
 func (m *Model) UpdateFields(opts ...Option) (string, int) {
-	co := ComposeOptions(opts...)
-
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
-	bind := 1
-	res := make([]string, 0)
-	for _, f := range m.fields {
-		if has(co.Exclude, f.dbName) {
-			continue
-		}
-		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
-			continue
-		}
+	ff, _ := m.filteredFields(opts...)
 
-		res = append(res, fmt.Sprintf("%s=$%d", f.dbName, bind))
-		bind++
+	res := make([]string, 0, len(ff))
+	for i, f := range ff {
+		res = append(res, fmt.Sprintf("%s=$%d", f.dbName, i+1))
 	}
 
-	return strings.Join(res, ", "), bind
+	return strings.Join(res, ", "), len(ff) + 1
 }
 
 // Binds returns comma separated binds in format $<bind no.> for count of fields, excluding
 // specified in the parameter exclude
 func (m *Model) Binds(opts ...Option) string {
-	co := ComposeOptions(opts...)
-
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
-	res := make([]string, 0)
-	idx := 1
-	for _, f := range m.fields {
-		if has(co.Exclude, f.dbName) {
-			continue
-		}
-		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
-			continue
-		}
+	ff, _ := m.filteredFields(opts...)
 
-		res = append(res, fmt.Sprintf("$%d", idx))
-		idx++
+	res := make([]string, 0, len(ff))
+	for i := range ff {
+		res = append(res, fmt.Sprintf("$%d", i+1))
 	}
 
 	return strings.Join(res, ", ")
@@ -162,8 +156,6 @@ func (m *Model) Binds(opts ...Option) string {
 // Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude.
 // Panics if obj is not a pointer to struct.
 func (m *Model) Pointers(obj any, opts ...Option) []any {
-	co := ComposeOptions(opts...)
-
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
 		panic("Pointers: object must be a pointer to struct")
@@ -172,17 +164,11 @@ func (m *Model) Pointers(obj any, opts ...Option) []any {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
+	ff, co := m.filteredFields(opts...)
 	val = val.Elem()
 
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if has(co.Exclude, f.dbName) {
-			continue
-		}
-		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
-			continue
-		}
-
+	res := make([]any, 0, len(ff)+len(co.AddTargets))
+	for _, f := range ff {
 		res = append(res, val.FieldByName(f.name).Addr().Interface())
 	}
 
@@ -207,8 +193,6 @@ func (m *Model) Pointer(obj any, name string) any {
 // Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude.
 // Panics if obj is not a pointer to struct.
 func (m *Model) Values(obj any, opts ...Option) []any {
-	co := ComposeOptions(opts...)
-
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
 		panic("Values: object must be a pointer to struct")
@@ -217,17 +201,11 @@ func (m *Model) Values(obj any, opts ...Option) []any {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
+	ff, _ := m.filteredFields(opts...)
 	val = val.Elem()
 
-	res := make([]any, 0)
-	for _, f := range m.fields {
-		if has(co.Exclude, f.dbName) {
-			continue
-		}
-		if len(co.Fields) > 0 && !has(co.Fields, f.dbName) {
-			continue
-		}
-
+	res := make([]any, 0, len(ff))
+	for _, f := range ff {
 		res = append(res, val.FieldByName(f.name).Interface())
 	}
 
