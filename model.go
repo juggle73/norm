@@ -50,6 +50,9 @@ func (m *Model) Parse(obj any, table string) error {
 
 	m.valType = val.Type()
 
+	m.pk = make([]string, 0)
+	m.unique = make([]string, 0)
+
 	c := val.NumField()
 	for i := 0; i < c; i++ {
 		f := val.Type().Field(i)
@@ -70,6 +73,13 @@ func (m *Model) Parse(obj any, table string) error {
 		m.fieldByAnyName[strcase.ToLowerCamel(field.name)] = field
 		m.fieldByAnyName[field.dbName] = field
 		m.fieldByAnyName[field.name] = field
+
+		if _, hasPk := tagValues["pk"]; hasPk {
+			m.pk = append(m.pk, field.dbName)
+		}
+		if _, hasUnique := tagValues["unique"]; hasUnique {
+			m.unique = append(m.unique, field.dbName)
+		}
 	}
 
 	return nil
