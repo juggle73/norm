@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juggle73/norm/v3"
+	"github.com/juggle73/norm/v4"
 )
 
 type User struct {

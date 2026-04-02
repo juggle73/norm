@@ -5,7 +5,7 @@ norm is a lightweight library that simplifies building SQL queries from Go struc
 ## Install
 
 ```shell
-go get -u github.com/juggle73/norm/v3
+go get -u github.com/juggle73/norm/v4
 ```
 
 ## Quick start
@@ -18,8 +18,8 @@ import (
     "database/sql"
 
     "github.com/jackc/pgx/v5/pgxpool"
-    "github.com/juggle73/norm/v3"
-    "github.com/juggle73/norm/v3/migrate"
+    "github.com/juggle73/norm/v4"
+    "github.com/juggle73/norm/v4/migrate"
 )
 
 type User struct {
@@ -531,7 +531,7 @@ Generate Go structs from an existing database schema. Code generation lives in a
 ```go
 import (
     "database/sql"
-    "github.com/juggle73/norm/v3/gen"
+    "github.com/juggle73/norm/v4/gen"
     _ "github.com/lib/pq" // or pgx/stdlib, etc.
 )
 
@@ -553,7 +553,7 @@ Generated structs include norm tags (`pk`, `notnull`, `unique`, `fk=...`) detect
 Automatically create and alter tables based on your Go structs. Lives in the `migrate` subpackage:
 
 ```go
-import "github.com/juggle73/norm/v3/migrate"
+import "github.com/juggle73/norm/v4/migrate"
 
 orm := norm.NewNorm(nil)
 orm.M(&User{})
