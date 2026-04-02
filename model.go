@@ -242,24 +242,34 @@ func (m *modelMeta) FieldByName(name string) (*Field, bool) {
 }
 
 // Returning validates field names and returns a RETURNING clause string.
+// Fields is a comma-separated list of field names (struct name, camelCase, or db name).
+// Returns empty string if fields is empty.
 // Panics if a field is not found in the model.
-func (m *modelMeta) Returning(opts ...Option) string {
-	co := ComposeOptions(opts...)
-	if len(co.Returning) == 0 {
+func (m *modelMeta) Returning(fields string) string {
+	fields = strings.TrimSpace(fields)
+	if fields == "" {
 		return ""
 	}
 
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
-	res := make([]string, 0, len(co.Returning))
-	for _, name := range co.Returning {
+	parts := strings.Split(fields, ",")
+	res := make([]string, 0, len(parts))
+	for _, name := range parts {
 		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
 		field, ok := m.fieldByAnyName[name]
 		if !ok {
 			panic(fmt.Sprintf("Returning: unknown field %q", name))
 		}
 		res = append(res, field.dbName)
+	}
+
+	if len(res) == 0 {
+		return ""
 	}
 
 	return "RETURNING " + strings.Join(res, ", ")
