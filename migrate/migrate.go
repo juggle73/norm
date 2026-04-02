@@ -75,32 +75,27 @@ func (m *Migrate) pgType(f *norm.Field) string {
 		t = t.Elem()
 	}
 
+	cfg := m.norm.GetConfig()
+
 	if t == reflect.TypeOf(time.Time{}) {
-		return "timestamptz"
+		return cfg.DefaultTime
 	}
 
 	if f.IsJSON() {
-		return "jsonb"
+		return cfg.DefaultJSON
 	}
 
 	if t == reflect.TypeOf([]byte(nil)) {
 		return "bytea"
 	}
 
-	if t.Kind() == reflect.Map {
-		return "jsonb"
-	}
-
-	if t.Kind() == reflect.Slice {
-		return "jsonb"
+	if t.Kind() == reflect.Map || t.Kind() == reflect.Slice {
+		return cfg.DefaultJSON
 	}
 
 	if pgType, ok := kindToPg[t.Kind()]; ok {
 		if t.Kind() == reflect.String {
-			cfg := m.norm.GetConfig()
-			if cfg != nil && cfg.DefaultString != "" {
-				return cfg.DefaultString
-			}
+			return cfg.DefaultString
 		}
 		return pgType
 	}

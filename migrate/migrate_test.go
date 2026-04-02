@@ -102,6 +102,24 @@ func TestCreateTableSQL_CustomDefaultString(t *testing.T) {
 	assertContains(t, sql, "email varchar UNIQUE")
 }
 
+func TestCreateTableSQL_CustomDefaultTime(t *testing.T) {
+	n := norm.NewNorm(&norm.Config{DefaultTime: "timestamp"})
+	n.M(&Product{})
+	mig := New(nil, n)
+	sql := mig.CreateTableSQL("product")
+
+	assertContains(t, sql, "created_at timestamp NOT NULL")
+}
+
+func TestCreateTableSQL_CustomDefaultJSON(t *testing.T) {
+	n := norm.NewNorm(&norm.Config{DefaultJSON: "json"})
+	n.M(&UserWithAddress{})
+	mig := New(nil, n)
+	sql := mig.CreateTableSQL("user_with_address")
+
+	assertContains(t, sql, "address json")
+}
+
 func TestCreateTableSQL_UnknownTable(t *testing.T) {
 	mig := newMigrate(&User{})
 	sql := mig.CreateTableSQL("nonexistent")

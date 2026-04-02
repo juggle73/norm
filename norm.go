@@ -25,6 +25,14 @@ type Config struct {
 	// when no dbType tag is specified. Defaults to "text".
 	DefaultString string
 
+	// DefaultTime sets the PostgreSQL type used for time.Time fields
+	// when no dbType tag is specified. Defaults to "timestamptz".
+	DefaultTime string
+
+	// DefaultJSON sets the PostgreSQL type used for struct fields
+	// serialized as JSON when no dbType tag is specified. Defaults to "jsonb".
+	DefaultJSON string
+
 	// JSONMarshal is the function used to marshal struct fields to JSON.
 	// Defaults to [encoding/json.Marshal]. Replace with a faster
 	// implementation (sonic, go-json, json-iterator) for better performance.
@@ -39,7 +47,7 @@ type Config struct {
 	JSONUnmarshal func(data []byte, v any) error
 }
 
-var defaultConfig = &Config{DefaultString: "text"}
+var defaultConfig = &Config{}
 
 // NewNorm creates a new [Norm] instance. Pass nil for default configuration.
 //
@@ -48,6 +56,15 @@ var defaultConfig = &Config{DefaultString: "text"}
 func NewNorm(config *Config) *Norm {
 	if config == nil {
 		config = defaultConfig
+	}
+	if config.DefaultString == "" {
+		config.DefaultString = "text"
+	}
+	if config.DefaultTime == "" {
+		config.DefaultTime = "timestamptz"
+	}
+	if config.DefaultJSON == "" {
+		config.DefaultJSON = "jsonb"
 	}
 	if config.JSONMarshal == nil {
 		config.JSONMarshal = json.Marshal
