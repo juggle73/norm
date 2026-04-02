@@ -1,7 +1,6 @@
 package norm
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -61,9 +60,11 @@ func (f *Field) isJSON() bool {
 }
 
 // jsonScanner implements the sql.Scanner interface for JSON struct fields.
-// It unmarshals JSON bytes or strings into the target pointer.
+// It unmarshals JSON bytes or strings into the target pointer using the
+// configured unmarshal function.
 type jsonScanner struct {
-	target any
+	target    any
+	unmarshal func(data []byte, v any) error
 }
 
 // Scan implements the sql.Scanner interface. It accepts []byte, string,
@@ -80,10 +81,5 @@ func (s *jsonScanner) Scan(src any) error {
 	default:
 		return fmt.Errorf("jsonScanner: unsupported source type %T", src)
 	}
-	return json.Unmarshal(data, s.target)
-}
-
-// jsonValue marshals v to JSON bytes for writing to the database.
-func jsonValue(v any) ([]byte, error) {
-	return json.Marshal(v)
+	return s.unmarshal(data, s.target)
 }

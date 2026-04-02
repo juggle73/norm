@@ -1,6 +1,7 @@
 package norm
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sync"
@@ -23,6 +24,19 @@ type Config struct {
 	// DefaultString sets the PostgreSQL type used for Go string fields
 	// when no dbType tag is specified. Defaults to "text".
 	DefaultString string
+
+	// JSONMarshal is the function used to marshal struct fields to JSON.
+	// Defaults to [encoding/json.Marshal]. Replace with a faster
+	// implementation (sonic, go-json, json-iterator) for better performance.
+	//
+	//	orm := norm.NewNorm(&norm.Config{
+	//	    JSONMarshal: sonic.Marshal,
+	//	})
+	JSONMarshal func(v any) ([]byte, error)
+
+	// JSONUnmarshal is the function used to unmarshal JSON into struct fields.
+	// Defaults to [encoding/json.Unmarshal].
+	JSONUnmarshal func(data []byte, v any) error
 }
 
 var defaultConfig = &Config{DefaultString: "text"}
@@ -34,6 +48,12 @@ var defaultConfig = &Config{DefaultString: "text"}
 func NewNorm(config *Config) *Norm {
 	if config == nil {
 		config = defaultConfig
+	}
+	if config.JSONMarshal == nil {
+		config.JSONMarshal = json.Marshal
+	}
+	if config.JSONUnmarshal == nil {
+		config.JSONUnmarshal = json.Unmarshal
 	}
 	return &Norm{
 		metas:  make(map[reflect.Type]*modelMeta),
