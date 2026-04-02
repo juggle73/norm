@@ -252,6 +252,50 @@ sql, args, _ := m.Delete(norm.Where("id = ?", 42), norm.Returning("Id"))
 // → "DELETE FROM users WHERE id=$1 RETURNING id"
 ```
 
+### JOIN
+
+Use `NewJoin` to build SELECT queries across multiple tables. Fields are auto-prefixed with table names, and `Pointers()` collects scan targets from all models:
+
+```go
+user := User{}
+order := Order{}
+mUser, _ := orm.M(&user)
+mOrder, _ := orm.M(&order)
+
+j := norm.NewJoin(mUser).
+    Inner(mOrder, "orders.user_id = users.id").
+    Where("users.active = ?", true).
+    Order("users.name DESC").
+    Limit(10)
+
+sql, args, _ := j.Select()
+// SELECT users.id, users.name, users.email, orders.id, orders.user_id, orders.total
+//   FROM users
+//   INNER JOIN orders ON orders.user_id = users.id
+//   WHERE users.active=$1
+//   ORDER BY users.name DESC LIMIT 10
+
+err := pool.QueryRow(ctx, sql, args...).Scan(j.Pointers()...)
+// user and order are populated
+```
+
+Multiple JOINs:
+
+```go
+item := OrderItem{}
+mItem, _ := orm.M(&item)
+
+j := norm.NewJoin(mUser).
+    Inner(mOrder, "orders.user_id = users.id").
+    Left(mItem, "order_items.order_id = orders.id").
+    Where("users.id = ?", 1)
+
+sql, args, _ := j.Select()
+err := pool.QueryRow(ctx, sql, args...).Scan(j.Pointers()...)
+```
+
+Supported join types: `Inner`, `Left`, `Right`.
+
 ### ORDER BY
 
 Field names are validated against the model and converted to database column names:
@@ -413,6 +457,21 @@ for rows.Next() {
 | `FieldByName(name)` | `*Field, bool` | Find field by any name format |
 | `FieldDescriptions()` | `[]*Field` | All field metadata |
 | `NewInstance()` | `any` | New zero-value struct pointer |
+
+## Join methods reference
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `NewJoin(base)` | `*Join` | Create join builder with FROM model |
+| `Inner(m, on)` | `*Join` | Add INNER JOIN |
+| `Left(m, on)` | `*Join` | Add LEFT JOIN |
+| `Right(m, on)` | `*Join` | Add RIGHT JOIN |
+| `Where(s, args...)` | `*Join` | Set WHERE clause |
+| `Order(s)` | `*Join` | Set ORDER BY (raw SQL) |
+| `Limit(n)` | `*Join` | Set LIMIT |
+| `Offset(n)` | `*Join` | Set OFFSET |
+| `Select()` | `string, []any, error` | Build SELECT query |
+| `Pointers()` | `[]any` | Scan targets from all models |
 
 ## Important notes on v3
 
