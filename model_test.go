@@ -292,29 +292,29 @@ func TestFieldByName(t *testing.T) {
 func TestReturning(t *testing.T) {
 	m := newTestModel()
 
-	t.Run("no returning option", func(t *testing.T) {
-		got := m.Returning()
+	t.Run("empty string", func(t *testing.T) {
+		got := m.Returning("")
 		if got != "" {
 			t.Errorf("expected empty, got %q", got)
 		}
 	})
 
 	t.Run("single field", func(t *testing.T) {
-		got := m.Returning(Returning("Id"))
+		got := m.Returning("Id")
 		if got != "RETURNING id" {
 			t.Errorf("got %q", got)
 		}
 	})
 
 	t.Run("multiple fields", func(t *testing.T) {
-		got := m.Returning(Returning("Id,Name"))
+		got := m.Returning("Id,Name")
 		if got != "RETURNING id, name" {
 			t.Errorf("got %q", got)
 		}
 	})
 
 	t.Run("by db name", func(t *testing.T) {
-		got := m.Returning(Returning("email"))
+		got := m.Returning("email")
 		if got != "RETURNING email" {
 			t.Errorf("got %q", got)
 		}
@@ -326,7 +326,7 @@ func TestReturning(t *testing.T) {
 				t.Error("expected panic")
 			}
 		}()
-		m.Returning(Returning("nonexistent"))
+		m.Returning("nonexistent")
 	})
 }
 

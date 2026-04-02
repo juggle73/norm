@@ -181,7 +181,7 @@ sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) %s",
     m.Table(),
     m.Fields(norm.Exclude("id")),
     m.Binds(norm.Exclude("id")),
-    m.Returning(norm.Returning("Id")),
+    m.Returning("Id"),
 )
 // → "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id"
 
@@ -384,7 +384,7 @@ for rows.Next() {
 | `Exclude("field1,field2")` | Exclude fields by db name | Fields, Binds, UpdateFields, Pointers, Values |
 | `Fields("field1,field2")` | Include only these fields | Fields, Binds, UpdateFields, Pointers, Values |
 | `Prefix("t.")` | Add table alias prefix | Fields |
-| `Returning("field1,field2")` | Fields for RETURNING clause | Returning |
+| `Returning("field1,field2")` | Fields for RETURNING clause | *(standalone option, see below)* |
 | `Limit(n)` | LIMIT value | LimitOffset |
 | `Offset(n)` | OFFSET value | LimitOffset |
 | `AddTargets(&var1, &var2)` | Extra scan targets | Pointers |
@@ -402,7 +402,7 @@ for rows.Next() {
 | `Pointer(name)` | `any` | Single field pointer |
 | `Table()` | `string` | Table name |
 | `OrderBy(s)` | `string` | Validated ORDER BY clause |
-| `Returning(opts...)` | `string` | RETURNING clause |
+| `Returning(fields)` | `string` | RETURNING clause |
 | `LimitOffset(opts...)` | `string` | LIMIT/OFFSET clause |
 | `BuildConditions(m, prefix)` | `[]string, []any` | WHERE conditions from map |
 | `CreateTableSQL()` | `string` | CREATE TABLE statement |
