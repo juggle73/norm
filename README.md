@@ -346,53 +346,6 @@ conds, vals := m.BuildConditions(map[string]any{
 | `isNull` | all | `"name": map[string]any{"isNull": true}` |
 | IN | all (via slice) | `"id": []any{1, 2, 3}` |
 
-## Migrations
-
-Generate CREATE TABLE and ALTER TABLE statements from struct definitions:
-
-```go
-m, _ := orm.M(&User{})
-
-// Generate CREATE TABLE
-sql := m.CreateTableSQL()
-// CREATE TABLE IF NOT EXISTS users (
-//     id integer NOT NULL,
-//     name text NOT NULL,
-//     email text,
-//     CONSTRAINT users_pkey PRIMARY KEY(id),
-//     CONSTRAINT unique_users_email UNIQUE(email)
-// )
-
-// Generate ALTER TABLE for missing fields
-// Pass existing column names from the database:
-stmts := m.Migrate([]string{"id", "name"})
-// → ["ALTER TABLE users ADD email text"]
-
-// New table (nil or empty slice):
-stmts := m.Migrate(nil)
-// → [full CREATE TABLE statement]
-```
-
-### Type mappings
-
-| Go type | PostgreSQL type |
-|---------|----------------|
-| `int` | integer |
-| `int64` | bigint |
-| `uint` | integer |
-| `uint64` | bigint |
-| `float32` | real |
-| `float64` | double precision |
-| `bool` | boolean |
-| `string` | text (configurable via `Config.DefaultString`) |
-| `time.Time` | timestamp with time zone |
-| `pgtype.Timestamptz` | timestamp with time zone |
-| `map[string]any` | json |
-| `[]byte` | bytea |
-| `[]string` | array |
-
-Override with `dbType` tag: `norm:"dbType=jsonb"`.
-
 ## Code generation
 
 Generate Go structs from an existing database schema:
@@ -457,8 +410,6 @@ for rows.Next() {
 | `Returning(fields)` | `string` | RETURNING clause |
 | `LimitOffset(limit, offset)` | `string` | LIMIT/OFFSET clause |
 | `BuildConditions(m, prefix)` | `[]string, []any` | WHERE conditions from map |
-| `CreateTableSQL()` | `string` | CREATE TABLE statement |
-| `Migrate(existing)` | `[]string` | ALTER TABLE statements |
 | `FieldByName(name)` | `*Field, bool` | Find field by any name format |
 | `FieldDescriptions()` | `[]*Field` | All field metadata |
 | `NewInstance()` | `any` | New zero-value struct pointer |

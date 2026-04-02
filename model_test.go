@@ -774,20 +774,6 @@ func TestEmbeddedStruct(t *testing.T) {
 		}
 	})
 
-	t.Run("pk from embedded struct", func(t *testing.T) {
-		sql := m.CreateTableSQL()
-		if !contains(sql, "PRIMARY KEY(id)") {
-			t.Errorf("missing pk from embedded struct in:\n%s", sql)
-		}
-	})
-
-	t.Run("unique from outer struct", func(t *testing.T) {
-		sql := m.CreateTableSQL()
-		if !contains(sql, "UNIQUE(email)") {
-			t.Errorf("missing unique from outer struct in:\n%s", sql)
-		}
-	})
-
 	t.Run("values work with embedded fields", func(t *testing.T) {
 		u := &User{BaseModel: BaseModel{Id: 42, CreatedAt: "2024-01-01"}, Name: "John", Email: "j@t.com"}
 		m2, _ := n.M(u)
@@ -823,19 +809,6 @@ func TestEmbeddedPointerStruct(t *testing.T) {
 	if fields[0].Name() != "Id" || fields[1].Name() != "Name" {
 		t.Errorf("unexpected fields: %s, %s", fields[0].Name(), fields[1].Name())
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
-}
-
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestNewInstance(t *testing.T) {
