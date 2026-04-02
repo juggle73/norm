@@ -77,7 +77,7 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 	case reflect.Bool:
 		res = b.boolCondition(val)
 	case reflect.Struct:
-		if b.field.valType.String() == "time.Time" || b.field.valType.String() == "pgtype.Timestamptz" {
+		if b.field.valType.String() == "time.Time" {
 			res = b.timeCondition(val)
 		}
 	case reflect.Map:

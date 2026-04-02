@@ -3,6 +3,8 @@ package norm
 import (
 	"fmt"
 	"strings"
+
+	"github.com/iancoleman/strcase"
 )
 
 type joinType string
@@ -124,6 +126,82 @@ func (j *Join) Pointers() []any {
 		ptrs = append(ptrs, je.model.Pointers()...)
 	}
 	return ptrs
+}
+
+// Auto adds an INNER JOIN with the ON clause resolved automatically from FK tags.
+// Panics if no FK relationship is found or if the relationship is ambiguous.
+func (j *Join) Auto(m *Model) *Join {
+	j.joins = append(j.joins, joinEntry{innerJoin, m, j.resolveFK(m)})
+	return j
+}
+
+// AutoLeft adds a LEFT JOIN with the ON clause resolved automatically from FK tags.
+// Panics if no FK relationship is found or if the relationship is ambiguous.
+func (j *Join) AutoLeft(m *Model) *Join {
+	j.joins = append(j.joins, joinEntry{leftJoin, m, j.resolveFK(m)})
+	return j
+}
+
+// resolveFK finds the FK relationship between m and existing models in the join.
+// Checks both directions: m referencing existing models, and existing models referencing m.
+// Panics on no match, ambiguous match, or missing/composite PK.
+func (j *Join) resolveFK(m *Model) string {
+	existing := make([]*Model, 0, 1+len(j.joins))
+	existing = append(existing, j.base)
+	for _, je := range j.joins {
+		existing = append(existing, je.model)
+	}
+
+	var matches []string
+
+	// Direction 1: m has FK pointing to an existing model
+	m.mut.RLock()
+	for _, f := range m.fields {
+		fkRef, hasFk := f.tagValues["fk"]
+		if !hasFk {
+			continue
+		}
+		fkTable := strcase.ToSnake(fkRef)
+		for _, em := range existing {
+			if em.table == fkTable {
+				if len(em.pk) != 1 {
+					panic(fmt.Sprintf("Auto: referenced model %q must have exactly one PK field", em.table))
+				}
+				on := fmt.Sprintf("%s.%s = %s.%s", m.table, f.dbName, em.table, em.pk[0])
+				matches = append(matches, on)
+			}
+		}
+	}
+	m.mut.RUnlock()
+
+	// Direction 2: an existing model has FK pointing to m
+	for _, em := range existing {
+		em.mut.RLock()
+		for _, f := range em.fields {
+			fkRef, hasFk := f.tagValues["fk"]
+			if !hasFk {
+				continue
+			}
+			fkTable := strcase.ToSnake(fkRef)
+			if fkTable == m.table {
+				if len(m.pk) != 1 {
+					panic(fmt.Sprintf("Auto: referenced model %q must have exactly one PK field", m.table))
+				}
+				on := fmt.Sprintf("%s.%s = %s.%s", em.table, f.dbName, m.table, m.pk[0])
+				matches = append(matches, on)
+			}
+		}
+		em.mut.RUnlock()
+	}
+
+	if len(matches) == 0 {
+		panic(fmt.Sprintf("Auto: no FK relationship found between %q and existing models", m.table))
+	}
+	if len(matches) > 1 {
+		panic(fmt.Sprintf("Auto: ambiguous FK relationship for %q (%d matches), use Inner/Left/Right instead", m.table, len(matches)))
+	}
+
+	return matches[0]
 }
 
 // collectFields returns field names prefixed with table name.

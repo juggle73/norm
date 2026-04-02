@@ -24,14 +24,14 @@ var defaultConfig = &Config{DefaultString: "text"}
 
 // NewNorm creates a new Norm instance
 func NewNorm(config *Config) *Norm {
-	norm := &Norm{}
 	if config == nil {
-		norm.config = defaultConfig
-	} else {
-		norm.config = config
+		config = defaultConfig
 	}
-
-	return norm
+	return &Norm{
+		metas:  make(map[reflect.Type]*modelMeta),
+		tables: make(map[string]*modelMeta),
+		config: config,
+	}
 }
 
 // AddModel registers a model with an explicit table name and returns a Model bound to obj.
@@ -46,10 +46,6 @@ func (n *Norm) AddModel(obj any, table string) *Model {
 	n.mut.Lock()
 	defer n.mut.Unlock()
 
-	if n.metas == nil {
-		n.metas = make(map[reflect.Type]*modelMeta)
-		n.tables = make(map[string]*modelMeta)
-	}
 	n.metas[meta.valType] = meta
 	n.tables[table] = meta
 

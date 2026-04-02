@@ -209,3 +209,159 @@ func TestJoinWhereMultipleArgs(t *testing.T) {
 		t.Errorf("unexpected args: %v", args)
 	}
 }
+
+// --- Auto join tests ---
+
+type AutoUser struct {
+	Id    int    `norm:"pk"`
+	Name  string
+	Email string
+}
+
+type AutoOrder struct {
+	Id     int `norm:"pk"`
+	UserId int `norm:"fk=AutoUser"`
+	Total  int
+}
+
+type AutoOrderCamel struct {
+	Id     int `norm:"pk"`
+	UserId int `norm:"fk=autoUser"`
+	Total  int
+}
+
+type AutoOrderSnake struct {
+	Id     int `norm:"pk"`
+	UserId int `norm:"fk=auto_user"`
+	Total  int
+}
+
+type AutoItem struct {
+	Id      int `norm:"pk"`
+	OrderId int `norm:"fk=AutoOrder"`
+	Product string
+}
+
+type AutoAmbiguous struct {
+	Id          int `norm:"pk"`
+	CreatedById int `norm:"fk=AutoUser"`
+	UpdatedById int `norm:"fk=AutoUser"`
+}
+
+type AutoNoFK struct {
+	Id   int `norm:"pk"`
+	Name string
+}
+
+func TestAutoJoin(t *testing.T) {
+	n := NewNorm(nil)
+
+	t.Run("basic auto join (CamelCase fk)", func(t *testing.T) {
+		mUser, _ := n.M(&AutoUser{})
+		mOrder, _ := n.M(&AutoOrder{})
+
+		sql, _, err := NewJoin(mUser).Auto(mOrder).Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT auto_user.id, auto_user.name, auto_user.email, auto_order.id, auto_order.user_id, auto_order.total FROM auto_user INNER JOIN auto_order ON auto_order.user_id = auto_user.id"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+	})
+
+	t.Run("auto join with camelCase fk tag", func(t *testing.T) {
+		mUser, _ := n.M(&AutoUser{})
+		mOrder, _ := n.M(&AutoOrderCamel{})
+
+		sql, _, err := NewJoin(mUser).Auto(mOrder).Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT auto_user.id, auto_user.name, auto_user.email, auto_order_camel.id, auto_order_camel.user_id, auto_order_camel.total FROM auto_user INNER JOIN auto_order_camel ON auto_order_camel.user_id = auto_user.id"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+	})
+
+	t.Run("auto join with snake_case fk tag", func(t *testing.T) {
+		mUser, _ := n.M(&AutoUser{})
+		mOrder, _ := n.M(&AutoOrderSnake{})
+
+		sql, _, err := NewJoin(mUser).Auto(mOrder).Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT auto_user.id, auto_user.name, auto_user.email, auto_order_snake.id, auto_order_snake.user_id, auto_order_snake.total FROM auto_user INNER JOIN auto_order_snake ON auto_order_snake.user_id = auto_user.id"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+	})
+
+	t.Run("reverse direction (base has FK to joined)", func(t *testing.T) {
+		mUser, _ := n.M(&AutoUser{})
+		mOrder, _ := n.M(&AutoOrder{})
+
+		sql, _, err := NewJoin(mOrder).Auto(mUser).Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT auto_order.id, auto_order.user_id, auto_order.total, auto_user.id, auto_user.name, auto_user.email FROM auto_order INNER JOIN auto_user ON auto_order.user_id = auto_user.id"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+	})
+
+	t.Run("chain auto join", func(t *testing.T) {
+		mUser, _ := n.M(&AutoUser{})
+		mOrder, _ := n.M(&AutoOrder{})
+		mItem, _ := n.M(&AutoItem{})
+
+		sql, _, err := NewJoin(mUser).Auto(mOrder).Auto(mItem).Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT auto_user.id, auto_user.name, auto_user.email, auto_order.id, auto_order.user_id, auto_order.total, auto_item.id, auto_item.order_id, auto_item.product FROM auto_user INNER JOIN auto_order ON auto_order.user_id = auto_user.id INNER JOIN auto_item ON auto_item.order_id = auto_order.id"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+	})
+
+	t.Run("auto left join", func(t *testing.T) {
+		mUser, _ := n.M(&AutoUser{})
+		mOrder, _ := n.M(&AutoOrder{})
+
+		sql, _, err := NewJoin(mUser).AutoLeft(mOrder).Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT auto_user.id, auto_user.name, auto_user.email, auto_order.id, auto_order.user_id, auto_order.total FROM auto_user LEFT JOIN auto_order ON auto_order.user_id = auto_user.id"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+	})
+
+	t.Run("ambiguous FK panics", func(t *testing.T) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("expected panic for ambiguous FK")
+			}
+		}()
+		mUser, _ := n.M(&AutoUser{})
+		mAmb, _ := n.M(&AutoAmbiguous{})
+		NewJoin(mUser).Auto(mAmb)
+	})
+
+	t.Run("no FK panics", func(t *testing.T) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("expected panic for missing FK")
+			}
+		}()
+		mUser, _ := n.M(&AutoUser{})
+		mNoFK, _ := n.M(&AutoNoFK{})
+		NewJoin(mUser).Auto(mNoFK)
+	})
+}
