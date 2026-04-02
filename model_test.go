@@ -48,8 +48,8 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("parse non-struct returns error", func(t *testing.T) {
-		model := NewModel(defaultConfig)
-		err := model.Parse(42, "test")
+		meta := newModelMeta(defaultConfig)
+		err := meta.Parse(42, "test")
 		if err == nil {
 			t.Error("expected error for non-struct")
 		}
@@ -150,18 +150,19 @@ func TestModelBinds(t *testing.T) {
 }
 
 func TestPointers(t *testing.T) {
-	m := newTestModel()
+	n := NewNorm(nil)
 	obj := &ModelTestStruct{Id: 1, Name: "John", Email: "john@test.com", Age: 30}
+	m, _ := n.M(obj)
 
 	t.Run("returns correct count", func(t *testing.T) {
-		ptrs := m.Pointers(obj)
+		ptrs := m.Pointers()
 		if len(ptrs) != 4 {
 			t.Fatalf("expected 4 pointers, got %d", len(ptrs))
 		}
 	})
 
 	t.Run("pointers point to correct fields", func(t *testing.T) {
-		ptrs := m.Pointers(obj)
+		ptrs := m.Pointers()
 		// Writing through pointers should modify the original
 		*(ptrs[0].(*int)) = 99
 		if obj.Id != 99 {
@@ -174,7 +175,7 @@ func TestPointers(t *testing.T) {
 	})
 
 	t.Run("with exclude", func(t *testing.T) {
-		ptrs := m.Pointers(obj, Exclude("id"))
+		ptrs := m.Pointers(Exclude("id"))
 		if len(ptrs) != 3 {
 			t.Errorf("expected 3 pointers, got %d", len(ptrs))
 		}
@@ -182,28 +183,20 @@ func TestPointers(t *testing.T) {
 
 	t.Run("with add targets", func(t *testing.T) {
 		var extra int
-		ptrs := m.Pointers(obj, AddTargets(&extra))
+		ptrs := m.Pointers(AddTargets(&extra))
 		if len(ptrs) != 5 {
 			t.Errorf("expected 5 pointers (4+1), got %d", len(ptrs))
 		}
 	})
-
-	t.Run("panics on non-pointer", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic")
-			}
-		}()
-		m.Pointers(ModelTestStruct{})
-	})
 }
 
 func TestValues(t *testing.T) {
-	m := newTestModel()
+	n := NewNorm(nil)
 	obj := &ModelTestStruct{Id: 1, Name: "John", Email: "john@test.com", Age: 30}
+	m, _ := n.M(obj)
 
 	t.Run("returns correct values", func(t *testing.T) {
-		vals := m.Values(obj)
+		vals := m.Values()
 		if len(vals) != 4 {
 			t.Fatalf("expected 4 values, got %d", len(vals))
 		}
@@ -222,7 +215,7 @@ func TestValues(t *testing.T) {
 	})
 
 	t.Run("with exclude", func(t *testing.T) {
-		vals := m.Values(obj, Exclude("id"))
+		vals := m.Values(Exclude("id"))
 		if len(vals) != 3 {
 			t.Fatalf("expected 3 values, got %d", len(vals))
 		}
@@ -232,7 +225,7 @@ func TestValues(t *testing.T) {
 	})
 
 	t.Run("with fields filter", func(t *testing.T) {
-		vals := m.Values(obj, Fields("id,name"))
+		vals := m.Values(Fields("id,name"))
 		if len(vals) != 2 {
 			t.Fatalf("expected 2 values, got %d", len(vals))
 		}
@@ -240,35 +233,18 @@ func TestValues(t *testing.T) {
 			t.Errorf("unexpected values: %v", vals)
 		}
 	})
-
-	t.Run("panics on non-pointer", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic")
-			}
-		}()
-		m.Values(ModelTestStruct{})
-	})
 }
 
 func TestPointer(t *testing.T) {
-	m := newTestModel()
+	n := NewNorm(nil)
 	obj := &ModelTestStruct{Id: 42, Name: "Test"}
+	m, _ := n.M(obj)
 
 	t.Run("returns correct pointer", func(t *testing.T) {
-		p := m.Pointer(obj, "Id")
+		p := m.Pointer("Id")
 		if *(p.(*int)) != 42 {
 			t.Errorf("expected 42, got %v", *(p.(*int)))
 		}
-	})
-
-	t.Run("panics on non-pointer", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic")
-			}
-		}()
-		m.Pointer(ModelTestStruct{}, "Id")
 	})
 }
 
@@ -296,7 +272,6 @@ func TestFieldByName(t *testing.T) {
 	})
 
 	t.Run("by camelCase", func(t *testing.T) {
-		// "Name" -> lowerCamel -> "name"
 		f, ok := m.FieldByName("name")
 		if !ok {
 			t.Fatal("expected to find field")
@@ -312,92 +287,6 @@ func TestFieldByName(t *testing.T) {
 			t.Error("expected not found")
 		}
 	})
-}
-
-func TestEmbeddedStruct(t *testing.T) {
-	type BaseModel struct {
-		Id        int `norm:"pk"`
-		CreatedAt string
-	}
-	type User struct {
-		BaseModel
-		Name  string
-		Email string `norm:"unique"`
-	}
-
-	n := NewNorm(nil)
-	m, err := n.M(&User{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("includes embedded fields", func(t *testing.T) {
-		fields := m.FieldDescriptions()
-		if len(fields) != 4 {
-			names := make([]string, len(fields))
-			for i, f := range fields {
-				names[i] = f.Name()
-			}
-			t.Fatalf("expected 4 fields (Id, CreatedAt, Name, Email), got %d: %v", len(fields), names)
-		}
-	})
-
-	t.Run("fields query includes embedded", func(t *testing.T) {
-		got := m.Fields()
-		want := "id, created_at, name, email"
-		if got != want {
-			t.Errorf("got %q, want %q", got, want)
-		}
-	})
-
-	t.Run("pk from embedded struct", func(t *testing.T) {
-		sql := m.CreateTableSQL()
-		if !contains(sql, "PRIMARY KEY(id)") {
-			t.Errorf("missing pk from embedded struct in:\n%s", sql)
-		}
-	})
-
-	t.Run("unique from outer struct", func(t *testing.T) {
-		sql := m.CreateTableSQL()
-		if !contains(sql, "UNIQUE(email)") {
-			t.Errorf("missing unique from outer struct in:\n%s", sql)
-		}
-	})
-
-	t.Run("pointers work with embedded fields", func(t *testing.T) {
-		u := &User{BaseModel: BaseModel{Id: 42, CreatedAt: "2024-01-01"}, Name: "John", Email: "j@t.com"}
-		vals := m.Values(u)
-		if vals[0] != 42 {
-			t.Errorf("expected Id=42, got %v", vals[0])
-		}
-		if vals[1] != "2024-01-01" {
-			t.Errorf("expected CreatedAt, got %v", vals[1])
-		}
-	})
-}
-
-func TestEmbeddedPointerStruct(t *testing.T) {
-	type Base struct {
-		Id int `norm:"pk"`
-	}
-	type Child struct {
-		*Base
-		Name string
-	}
-
-	n := NewNorm(nil)
-	m, err := n.M(&Child{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fields := m.FieldDescriptions()
-	if len(fields) != 2 {
-		t.Fatalf("expected 2 fields, got %d", len(fields))
-	}
-	if fields[0].Name() != "Id" || fields[1].Name() != "Name" {
-		t.Errorf("unexpected fields: %s, %s", fields[0].Name(), fields[1].Name())
-	}
 }
 
 func TestReturning(t *testing.T) {
@@ -546,6 +435,93 @@ func TestOrderBy(t *testing.T) {
 	})
 }
 
+func TestEmbeddedStruct(t *testing.T) {
+	type BaseModel struct {
+		Id        int `norm:"pk"`
+		CreatedAt string
+	}
+	type User struct {
+		BaseModel
+		Name  string
+		Email string `norm:"unique"`
+	}
+
+	n := NewNorm(nil)
+	m, err := n.M(&User{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("includes embedded fields", func(t *testing.T) {
+		fields := m.FieldDescriptions()
+		if len(fields) != 4 {
+			names := make([]string, len(fields))
+			for i, f := range fields {
+				names[i] = f.Name()
+			}
+			t.Fatalf("expected 4 fields (Id, CreatedAt, Name, Email), got %d: %v", len(fields), names)
+		}
+	})
+
+	t.Run("fields query includes embedded", func(t *testing.T) {
+		got := m.Fields()
+		want := "id, created_at, name, email"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("pk from embedded struct", func(t *testing.T) {
+		sql := m.CreateTableSQL()
+		if !contains(sql, "PRIMARY KEY(id)") {
+			t.Errorf("missing pk from embedded struct in:\n%s", sql)
+		}
+	})
+
+	t.Run("unique from outer struct", func(t *testing.T) {
+		sql := m.CreateTableSQL()
+		if !contains(sql, "UNIQUE(email)") {
+			t.Errorf("missing unique from outer struct in:\n%s", sql)
+		}
+	})
+
+	t.Run("values work with embedded fields", func(t *testing.T) {
+		u := &User{BaseModel: BaseModel{Id: 42, CreatedAt: "2024-01-01"}, Name: "John", Email: "j@t.com"}
+		m2, _ := n.M(u)
+		vals := m2.Values()
+		if vals[0] != 42 {
+			t.Errorf("expected Id=42, got %v", vals[0])
+		}
+		if vals[1] != "2024-01-01" {
+			t.Errorf("expected CreatedAt, got %v", vals[1])
+		}
+	})
+}
+
+func TestEmbeddedPointerStruct(t *testing.T) {
+	type Base struct {
+		Id int `norm:"pk"`
+	}
+	type Child struct {
+		*Base
+		Name string
+	}
+
+	n := NewNorm(nil)
+	m, err := n.M(&Child{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fields := m.FieldDescriptions()
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(fields))
+	}
+	if fields[0].Name() != "Id" || fields[1].Name() != "Name" {
+		t.Errorf("unexpected fields: %s, %s", fields[0].Name(), fields[1].Name())
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
 }
@@ -575,4 +551,32 @@ func TestFieldDescriptions(t *testing.T) {
 	if len(fields) != 4 {
 		t.Errorf("expected 4 fields, got %d", len(fields))
 	}
+}
+
+func TestModelBoundToInstance(t *testing.T) {
+	n := NewNorm(nil)
+	user1 := &ModelTestStruct{Id: 1, Name: "Alice"}
+	user2 := &ModelTestStruct{Id: 2, Name: "Bob"}
+
+	m1, _ := n.M(user1)
+	m2, _ := n.M(user2)
+
+	t.Run("different models return different values", func(t *testing.T) {
+		v1 := m1.Values()
+		v2 := m2.Values()
+		if v1[0] != 1 || v2[0] != 2 {
+			t.Errorf("expected different Ids: got %v and %v", v1[0], v2[0])
+		}
+		if v1[1] != "Alice" || v2[1] != "Bob" {
+			t.Errorf("expected different Names: got %v and %v", v1[1], v2[1])
+		}
+	})
+
+	t.Run("modifying original struct reflects in model", func(t *testing.T) {
+		user1.Name = "Charlie"
+		vals := m1.Values()
+		if vals[1] != "Charlie" {
+			t.Errorf("expected Charlie, got %v", vals[1])
+		}
+	})
 }

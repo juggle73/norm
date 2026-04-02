@@ -33,12 +33,6 @@ func TestAddModel(t *testing.T) {
 	if m.Table() != "users" {
 		t.Errorf("expected table 'users', got %q", m.Table())
 	}
-
-	// Should be cached
-	m2 := n.T("users")
-	if m2 != m {
-		t.Error("expected same model from cache")
-	}
 }
 
 func TestM(t *testing.T) {
@@ -54,11 +48,12 @@ func TestM(t *testing.T) {
 		}
 	})
 
-	t.Run("cached on second call", func(t *testing.T) {
+	t.Run("metadata cached on second call", func(t *testing.T) {
 		m1, _ := n.M(&TestUser{})
 		m2, _ := n.M(&TestUser{})
-		if m1 != m2 {
-			t.Error("expected same model pointer from cache")
+		// Different Model wrappers but same underlying metadata
+		if m1.modelMeta != m2.modelMeta {
+			t.Error("expected same modelMeta from cache")
 		}
 	})
 
@@ -66,27 +61,6 @@ func TestM(t *testing.T) {
 		_, err := n.M(TestUser{})
 		if err == nil {
 			t.Error("expected error for non-pointer")
-		}
-	})
-}
-
-func TestT(t *testing.T) {
-	n := NewNorm(nil)
-
-	t.Run("not found returns nil", func(t *testing.T) {
-		if n.T("nonexistent") != nil {
-			t.Error("expected nil for unknown table")
-		}
-	})
-
-	t.Run("found after add", func(t *testing.T) {
-		n.AddModel(&TestUser{}, "my_users")
-		m := n.T("my_users")
-		if m == nil {
-			t.Fatal("expected model, got nil")
-		}
-		if m.Table() != "my_users" {
-			t.Errorf("expected 'my_users', got %q", m.Table())
 		}
 	})
 }
