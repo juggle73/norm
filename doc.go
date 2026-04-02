@@ -15,10 +15,15 @@
 //	}
 //
 //	orm := norm.NewNorm(nil)
-//	user := User{}
-//	m, _ := orm.M(&user)
+//	orm.AddModel(&User{}, "users")
+//
+//	// Sync tables (create/add columns)
+//	mig := migrate.New(db, orm)
+//	mig.Sync(ctx)
 //
 //	// SELECT
+//	user := User{}
+//	m, _ := orm.M(&user)
 //	sql, args, _ := m.Select(norm.Where("id = ?", 42))
 //	_ = pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
 //
