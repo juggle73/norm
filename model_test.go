@@ -1,6 +1,9 @@
 package norm
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -1036,5 +1039,61 @@ func TestJSONUpdate(t *testing.T) {
 	}
 	if string(b) != `{"city":"LA","street":"Sunset"}` {
 		t.Errorf("unexpected JSON: %s", string(b))
+	}
+}
+
+func TestCustomJSONCodec(t *testing.T) {
+	// Custom marshal that wraps output in "CUSTOM:" prefix
+	customMarshal := func(v any) ([]byte, error) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return []byte("CUSTOM:" + string(b)), nil
+	}
+
+	// Custom unmarshal that strips "CUSTOM:" prefix
+	customUnmarshal := func(data []byte, v any) error {
+		s := string(data)
+		if !strings.HasPrefix(s, "CUSTOM:") {
+			return fmt.Errorf("missing CUSTOM: prefix")
+		}
+		return json.Unmarshal([]byte(strings.TrimPrefix(s, "CUSTOM:")), v)
+	}
+
+	n := NewNorm(&Config{
+		JSONMarshal:   customMarshal,
+		JSONUnmarshal: customUnmarshal,
+	})
+
+	user := &JSONUser{Id: 1, Name: "Bob", Address: JSONAddress{City: "NY", Street: "Broadway"}}
+	m, _ := n.M(user)
+
+	// Test Values uses custom marshal
+	vals := m.Values()
+	b, ok := vals[2].([]byte)
+	if !ok {
+		t.Fatalf("expected []byte for JSON field, got %T", vals[2])
+	}
+	if !strings.HasPrefix(string(b), "CUSTOM:") {
+		t.Errorf("expected CUSTOM: prefix, got %q", string(b))
+	}
+
+	// Test Pointers uses custom unmarshal via jsonScanner
+	user2 := &JSONUser{}
+	m2, _ := n.M(user2)
+	ptrs := m2.Pointers()
+
+	scanner, ok := ptrs[2].(*jsonScanner)
+	if !ok {
+		t.Fatalf("expected *jsonScanner for JSON field, got %T", ptrs[2])
+	}
+
+	err := scanner.Scan(b)
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if user2.Address.City != "NY" || user2.Address.Street != "Broadway" {
+		t.Errorf("unexpected address: %+v", user2.Address)
 	}
 }

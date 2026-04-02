@@ -69,6 +69,12 @@ func main() {
 ```go
 orm := norm.NewNorm(nil) // default config
 orm := norm.NewNorm(&norm.Config{DefaultString: "varchar"}) // custom default string type
+
+// Pluggable JSON codec (default: encoding/json)
+orm := norm.NewNorm(&norm.Config{
+    JSONMarshal:   sonic.Marshal,
+    JSONUnmarshal: sonic.Unmarshal,
+})
 ```
 
 ### Model
@@ -176,6 +182,17 @@ _ = pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
 ```
 
 Pointer struct fields (`*Address`) work the same way. `nil` pointers marshal to `null`.
+
+By default `encoding/json` is used. For better performance, plug in a faster codec via `Config`:
+
+```go
+import "github.com/bytedance/sonic"
+
+orm := norm.NewNorm(&norm.Config{
+    JSONMarshal:   sonic.Marshal,
+    JSONUnmarshal: sonic.Unmarshal,
+})
+```
 
 ## Query building
 

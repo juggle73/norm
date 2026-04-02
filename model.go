@@ -212,7 +212,7 @@ func (m *Model) Pointers(opts ...Option) []any {
 	for _, f := range ff {
 		ptr := m.val.FieldByName(f.name).Addr().Interface()
 		if f.isJSON() {
-			res = append(res, &jsonScanner{target: ptr})
+			res = append(res, &jsonScanner{target: ptr, unmarshal: m.config.JSONUnmarshal})
 		} else {
 			res = append(res, ptr)
 		}
@@ -248,7 +248,7 @@ func (m *Model) Values(opts ...Option) []any {
 	for _, f := range ff {
 		val := m.val.FieldByName(f.name).Interface()
 		if f.isJSON() {
-			b, err := jsonValue(val)
+			b, err := m.config.JSONMarshal(val)
 			if err != nil {
 				panic(fmt.Sprintf("Values: json marshal field %q: %v", f.name, err))
 			}
@@ -331,7 +331,7 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 		binds = append(binds, fmt.Sprintf("$%d", i+1))
 		val := m.val.FieldByName(f.name).Interface()
 		if f.isJSON() {
-			b, err := jsonValue(val)
+			b, err := m.config.JSONMarshal(val)
 			if err != nil {
 				return "", nil, fmt.Errorf("Insert: json marshal field %q: %w", f.name, err)
 			}
@@ -383,7 +383,7 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 		setCols = append(setCols, fmt.Sprintf("%s=$%d", f.dbName, i+1))
 		val := m.val.FieldByName(f.name).Interface()
 		if f.isJSON() {
-			b, err := jsonValue(val)
+			b, err := m.config.JSONMarshal(val)
 			if err != nil {
 				return "", nil, fmt.Errorf("Update: json marshal field %q: %w", f.name, err)
 			}
