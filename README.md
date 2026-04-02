@@ -463,63 +463,66 @@ ptrs := m.Pointers(norm.AddTargets(&totalCount))
 
 ## WHERE conditions builder
 
-`BuildConditions` builds WHERE clauses from a map:
+`BuildConditions` builds WHERE clauses from typed conditions:
 
 ```go
 m, _ := orm.M(&User{})
 
-// Simple equality
-conds, vals := m.BuildConditions(map[string]any{
-    "name": "John",
-}, "")
+// Equality
+conds, vals := m.BuildConditions(norm.Eq("name", "John"))
 // conds = ["name=$1"], vals = ["John"]
 
 // Comparison operators
-conds, vals := m.BuildConditions(map[string]any{
-    "age": map[string]any{"gte": 18, "lt": 65},
-}, "")
-// conds = ["age >= $1 AND age < $2"], vals = [18, 65]
+conds, vals := m.BuildConditions(
+    norm.Gte("age", 18),
+    norm.Lt("age", 65),
+)
+// conds = ["age >= $1", "age < $2"], vals = [18, 65]
 
 // IN clause
-conds, vals := m.BuildConditions(map[string]any{
-    "name": []any{"Alice", "Bob"},
-}, "")
+conds, vals := m.BuildConditions(norm.In("name", "Alice", "Bob"))
 // conds = ["name IN ($1, $2)"], vals = ["Alice", "Bob"]
 
 // LIKE
-conds, vals := m.BuildConditions(map[string]any{
-    "name": map[string]any{"like": "%john%"},
-}, "")
+conds, vals := m.BuildConditions(norm.Like("name", "%john%"))
 // conds = ["name LIKE $1"], vals = ["%john%"]
 
 // IS NULL / IS NOT NULL
-conds, vals := m.BuildConditions(map[string]any{
-    "email": map[string]any{"isNull": true},
-}, "")
+conds, vals := m.BuildConditions(norm.IsNull("email", true))
 // conds = ["email IS NULL"], vals = []
 
 // With table prefix (for JOINs)
-conds, vals := m.BuildConditions(map[string]any{
-    "name": "John",
-}, "u.")
+conds, vals := m.BuildConditions(norm.Eq("name", "John"), norm.Prefix("u."))
 // conds = ["u.name=$1"]
 
 // JSON field access
-conds, vals := m.BuildConditions(map[string]any{
-    "data->>key": "value",
-}, "")
+conds, vals := m.BuildConditions(norm.Eq("data->>key", "value"))
 // conds = ["data->>key=$1"]
+
+// Combine multiple conditions
+conds, vals := m.BuildConditions(
+    norm.Eq("name", "John"),
+    norm.Gte("age", 18),
+    norm.Lt("age", 65),
+    norm.IsNull("deleted_at", true),
+    norm.Prefix("u."),
+)
 ```
 
-### Supported condition operators
+### Condition functions
 
-| Operator | Types | Example |
-|----------|-------|---------|
-| equality | string, int, uint, float, bool | `"name": "John"` |
-| `gt`, `gte`, `lt`, `lte`, `ne` | int, uint, float, time | `"age": map[string]any{"gte": 18}` |
-| `like` | string | `"name": map[string]any{"like": "%J%"}` |
-| `isNull` | all | `"name": map[string]any{"isNull": true}` |
-| IN | all (via slice) | `"id": []any{1, 2, 3}` |
+| Function | SQL | Example |
+|----------|-----|---------|
+| `Eq(field, value)` | `field = $N` | `norm.Eq("name", "John")` |
+| `Gt(field, value)` | `field > $N` | `norm.Gt("age", 18)` |
+| `Gte(field, value)` | `field >= $N` | `norm.Gte("age", 18)` |
+| `Lt(field, value)` | `field < $N` | `norm.Lt("age", 65)` |
+| `Lte(field, value)` | `field <= $N` | `norm.Lte("age", 65)` |
+| `Ne(field, value)` | `field != $N` | `norm.Ne("status", "deleted")` |
+| `Like(field, value)` | `field LIKE $N` | `norm.Like("name", "%john%")` |
+| `IsNull(field, bool)` | `field IS [NOT] NULL` | `norm.IsNull("email", true)` |
+| `In(field, values...)` | `field IN ($N, ...)` | `norm.In("id", 1, 2, 3)` |
+| `Prefix(prefix)` | — | `norm.Prefix("u.")` |
 
 ## Code generation
 
@@ -639,7 +642,7 @@ Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to overr
 | `Delete(opts...)` | `string, []any, error` | Full DELETE query + args |
 | `Returning(fields)` | `string` | RETURNING clause |
 | `LimitOffset(limit, offset)` | `string` | LIMIT/OFFSET clause |
-| `BuildConditions(m, prefix)` | `[]string, []any` | WHERE conditions from map |
+| `BuildConditions(conds...)` | `[]string, []any` | WHERE conditions from typed Cond values |
 | `FieldByName(name)` | `*Field, bool` | Find field by any name format |
 | `FieldDescriptions()` | `[]*Field` | All field metadata |
 | `NewInstance()` | `any` | New zero-value struct pointer |
