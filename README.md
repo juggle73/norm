@@ -626,6 +626,26 @@ Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to overr
 | `Select()` | `string, []any, error` | Build SELECT query |
 | `Pointers()` | `[]any` | Scan targets from all models |
 
+## Norm methods reference
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `NewNorm(config)` | `*Norm` | Create instance with optional config |
+| `M(&obj)` | `*Model, error` | Get Model bound to struct instance |
+| `AddModel(&obj, table)` | `*Model` | Register with explicit table name |
+| `Tables()` | `[]string` | All registered table names |
+| `FieldsByTable(table)` | `[]*Field` | Field descriptors for a table |
+| `GetConfig()` | `*Config` | Current configuration |
+
+## Migrate methods reference
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `New(db, orm)` | `*Migrate` | Create migrate instance |
+| `Sync(ctx)` | `error` | Create tables + add columns (safe) |
+| `Diff(ctx)` | `string, error` | Full SQL diff for review |
+| `CreateTableSQL(table)` | `string` | Preview CREATE TABLE statement |
+
 ## Benchmarks
 
 SQL generation speed compared to popular query builders. Pure query building, no database involved.
