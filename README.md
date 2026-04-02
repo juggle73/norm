@@ -102,11 +102,12 @@ func main() {
 
 ```go
 orm := norm.NewNorm(nil) // default config
-orm := norm.NewNorm(&norm.Config{DefaultString: "varchar"}) // custom default string type
 
-// Pluggable JSON codec (default: encoding/json)
 orm := norm.NewNorm(&norm.Config{
-    JSONMarshal:   sonic.Marshal,
+    DefaultString: "varchar",      // default: "text"
+    DefaultTime:   "timestamp",    // default: "timestamptz"
+    DefaultJSON:   "json",         // default: "jsonb"
+    JSONMarshal:   sonic.Marshal,  // default: encoding/json
     JSONUnmarshal: sonic.Unmarshal,
 })
 ```
