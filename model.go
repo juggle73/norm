@@ -286,19 +286,11 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 		strings.Join(binds, ", "),
 	)
 
-	// RETURNING
-	if len(co.Returning) > 0 {
-		ret := make([]string, 0, len(co.Returning))
-		for _, name := range co.Returning {
-			name = strings.TrimSpace(name)
-			field, ok := m.fieldByAnyName[name]
-			if !ok {
-				return "", nil, fmt.Errorf("Returning: unknown field %q", name)
-			}
-			ret = append(ret, field.dbName)
-		}
-		sql += " RETURNING " + strings.Join(ret, ", ")
+	retSQL, err := m.returningSQL(co.Returning)
+	if err != nil {
+		return "", nil, err
 	}
+	sql += retSQL
 
 	return sql, vals, nil
 }
@@ -334,19 +326,11 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 		vals = append(vals, co.Where.Args...)
 	}
 
-	// RETURNING
-	if len(co.Returning) > 0 {
-		ret := make([]string, 0, len(co.Returning))
-		for _, name := range co.Returning {
-			name = strings.TrimSpace(name)
-			field, ok := m.fieldByAnyName[name]
-			if !ok {
-				return "", nil, fmt.Errorf("Returning: unknown field %q", name)
-			}
-			ret = append(ret, field.dbName)
-		}
-		sql += " RETURNING " + strings.Join(ret, ", ")
+	retSQL, err := m.returningSQL(co.Returning)
+	if err != nil {
+		return "", nil, err
 	}
+	sql += retSQL
 
 	return sql, vals, nil
 }
@@ -370,21 +354,31 @@ func (m *Model) Delete(opts ...Option) (string, []any, error) {
 		args = append(args, co.Where.Args...)
 	}
 
-	// RETURNING
-	if len(co.Returning) > 0 {
-		ret := make([]string, 0, len(co.Returning))
-		for _, name := range co.Returning {
-			name = strings.TrimSpace(name)
-			field, ok := m.fieldByAnyName[name]
-			if !ok {
-				return "", nil, fmt.Errorf("Returning: unknown field %q", name)
-			}
-			ret = append(ret, field.dbName)
-		}
-		sql += " RETURNING " + strings.Join(ret, ", ")
+	retSQL, err := m.returningSQL(co.Returning)
+	if err != nil {
+		return "", nil, err
 	}
+	sql += retSQL
 
 	return sql, args, nil
+}
+
+// returningSQL builds a RETURNING clause from composed options. Must be called under m.mut.RLock.
+// Returns the clause string (including " RETURNING " prefix) and error.
+func (m *modelMeta) returningSQL(returning []string) (string, error) {
+	if len(returning) == 0 {
+		return "", nil
+	}
+	ret := make([]string, 0, len(returning))
+	for _, name := range returning {
+		name = strings.TrimSpace(name)
+		field, ok := m.fieldByAnyName[name]
+		if !ok {
+			return "", fmt.Errorf("Returning: unknown field %q", name)
+		}
+		ret = append(ret, field.dbName)
+	}
+	return " RETURNING " + strings.Join(ret, ", "), nil
 }
 
 // orderBySQL validates and renders ORDER BY clause. Must be called under m.mut.RLock.

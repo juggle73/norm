@@ -404,23 +404,6 @@ for tableName, source := range results {
 }
 ```
 
-## MapScanner
-
-For JOIN queries, `MapScanner` organizes results by source table:
-
-```go
-scanner, err := norm.NewMapScanner(pool)
-
-rows, _ := pool.Query(ctx, "SELECT u.id, u.name, o.id, o.total FROM users u JOIN orders o ON ...")
-for rows.Next() {
-    result, _ := scanner.Scan(rows)
-    // result = map[string]any{
-    //     "users":  map[string]any{"id": 1, "name": "John"},
-    //     "orders": map[string]any{"id": 42, "total": 99.99},
-    // }
-}
-```
-
 ## Options reference
 
 | Option | Description | Used by |
