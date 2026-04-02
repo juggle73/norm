@@ -29,7 +29,7 @@ norm is a lightweight library that simplifies building SQL queries from Go struc
 ## Install
 
 ```shell
-go get -u github.com/juggle73/norm/v4
+go get github.com/juggle73/norm/v4
 ```
 
 ## Quick start
