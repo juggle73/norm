@@ -435,6 +435,151 @@ func TestOrderBy(t *testing.T) {
 	})
 }
 
+func TestSelect(t *testing.T) {
+	n := NewNorm(nil)
+	user := &ModelTestStruct{Id: 1, Name: "John", Email: "john@test.com", Age: 30}
+	m, _ := n.M(user)
+
+	t.Run("basic select", func(t *testing.T) {
+		sql, args, err := m.Select()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "SELECT id, name, email, age FROM model_test_struct" {
+			t.Errorf("got %q", sql)
+		}
+		if len(args) != 0 {
+			t.Errorf("expected no args, got %v", args)
+		}
+	})
+
+	t.Run("with exclude", func(t *testing.T) {
+		sql, _, err := m.Select(Exclude("age"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "SELECT id, name, email FROM model_test_struct" {
+			t.Errorf("got %q", sql)
+		}
+	})
+
+	t.Run("with where", func(t *testing.T) {
+		sql, args, err := m.Select(Where("id = ? AND name = ?", 1, "John"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "SELECT id, name, email, age FROM model_test_struct WHERE id = $1 AND name = $2" {
+			t.Errorf("got %q", sql)
+		}
+		if len(args) != 2 || args[0] != 1 || args[1] != "John" {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("with order", func(t *testing.T) {
+		sql, _, err := m.Select(Order("Name DESC"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "SELECT id, name, email, age FROM model_test_struct ORDER BY name DESC" {
+			t.Errorf("got %q", sql)
+		}
+	})
+
+	t.Run("with limit offset", func(t *testing.T) {
+		sql, _, err := m.Select(Limit(10), Offset(20))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "SELECT id, name, email, age FROM model_test_struct LIMIT 10 OFFSET 20" {
+			t.Errorf("got %q", sql)
+		}
+	})
+
+	t.Run("full query", func(t *testing.T) {
+		sql, args, err := m.Select(
+			Exclude("age"),
+			Where("name = ?", "John"),
+			Order("Name ASC"),
+			Limit(5),
+			Offset(10),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT id, name, email FROM model_test_struct WHERE name = $1 ORDER BY name ASC LIMIT 5 OFFSET 10"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+		if len(args) != 1 || args[0] != "John" {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("with prefix", func(t *testing.T) {
+		sql, _, err := m.Select(Prefix("u."), Fields("id,name"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "SELECT u.id, u.name FROM model_test_struct" {
+			t.Errorf("got %q", sql)
+		}
+	})
+}
+
+func TestInsert(t *testing.T) {
+	n := NewNorm(nil)
+	user := &ModelTestStruct{Id: 0, Name: "Alice", Email: "alice@test.com", Age: 25}
+	m, _ := n.M(user)
+
+	t.Run("basic insert", func(t *testing.T) {
+		sql, vals, err := m.Insert(Exclude("id"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "INSERT INTO model_test_struct (name, email, age) VALUES ($1, $2, $3)" {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 3 || vals[0] != "Alice" || vals[1] != "alice@test.com" || vals[2] != 25 {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
+
+	t.Run("with returning", func(t *testing.T) {
+		sql, vals, err := m.Insert(Exclude("id"), Returning("Id"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "INSERT INTO model_test_struct (name, email, age) VALUES ($1, $2, $3) RETURNING id"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 3 {
+			t.Errorf("expected 3 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("with fields filter", func(t *testing.T) {
+		sql, vals, err := m.Insert(Fields("name,email"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sql != "INSERT INTO model_test_struct (name, email) VALUES ($1, $2)" {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 2 {
+			t.Errorf("expected 2 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("returning unknown field errors", func(t *testing.T) {
+		_, _, err := m.Insert(Returning("nonexistent"))
+		if err == nil {
+			t.Error("expected error for unknown returning field")
+		}
+	})
+}
+
 func TestEmbeddedStruct(t *testing.T) {
 	type BaseModel struct {
 		Id        int `norm:"pk"`

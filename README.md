@@ -138,54 +138,60 @@ Both value and pointer embeddings are supported (`BaseModel` and `*BaseModel`).
 
 ### SELECT
 
+The simplest way — use `m.Select()`:
+
 ```go
 user := User{}
 m, _ := orm.M(&user)
 
+sql, args, _ := m.Select(norm.Where("id = ?", 42))
+// sql = "SELECT id, name, email FROM users WHERE id=$1"
+
+err := pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
+```
+
+With all options:
+
+```go
+sql, args, _ := m.Select(
+    norm.Exclude("password"),
+    norm.Where("active = ?", true),
+    norm.Order("Name DESC"),
+    norm.Limit(10),
+    norm.Offset(20),
+)
+// → "SELECT id, name, email FROM users WHERE active=$1 ORDER BY name DESC LIMIT 10 OFFSET 20"
+```
+
+You can also build SELECT manually with individual methods:
+
+```go
 sql := fmt.Sprintf("SELECT %s FROM %s WHERE id=$1", m.Fields(), m.Table())
 err := pool.QueryRow(ctx, sql, 42).Scan(m.Pointers()...)
 ```
 
-### SELECT with options
-
-```go
-// Only specific fields
-sql := fmt.Sprintf("SELECT %s FROM %s", m.Fields(norm.Fields("id,name")), m.Table())
-
-// Exclude fields
-sql := fmt.Sprintf("SELECT %s FROM %s", m.Fields(norm.Exclude("created_at,updated_at")), m.Table())
-
-// Table prefix (for JOINs)
-sql := fmt.Sprintf("SELECT %s FROM users u", m.Fields(norm.Prefix("u.")))
-// → "SELECT u.id, u.name, u.email FROM users u"
-```
-
 ### INSERT
+
+Use `m.Insert()` — returns SQL and values from the bound struct:
 
 ```go
 user := User{Name: "Alice", Email: "alice@example.com"}
 m, _ := orm.M(&user)
 
-sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-    m.Table(),
-    m.Fields(norm.Exclude("id")),
-    m.Binds(norm.Exclude("id")),
-)
-_, err := pool.Exec(ctx, sql, m.Values(norm.Exclude("id"))...)
+sql, vals, _ := m.Insert(norm.Exclude("id"))
+// sql  = "INSERT INTO users (name, email) VALUES ($1, $2)"
+// vals = ["Alice", "alice@example.com"]
+
+_, err := pool.Exec(ctx, sql, vals...)
 ```
 
 ### INSERT with RETURNING
 
 ```go
-sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) %s",
-    m.Table(),
-    m.Fields(norm.Exclude("id")),
-    m.Binds(norm.Exclude("id")),
-    m.Returning("Id"),
-)
+sql, vals, _ := m.Insert(norm.Exclude("id"), norm.Returning("Id"))
 // → "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id"
 
-err := pool.QueryRow(ctx, sql, m.Values(norm.Exclude("id"))...).Scan(m.Pointer("Id"))
+err := pool.QueryRow(ctx, sql, vals...).Scan(m.Pointer("Id"))
 ```
 
 ### UPDATE
@@ -383,9 +389,10 @@ for rows.Next() {
 | `Exclude("field1,field2")` | Exclude fields by db name | Fields, Binds, UpdateFields, Pointers, Values |
 | `Fields("field1,field2")` | Include only these fields | Fields, Binds, UpdateFields, Pointers, Values |
 | `Prefix("t.")` | Add table alias prefix | Fields |
-| `Returning("field1,field2")` | Fields for RETURNING clause | *(standalone option, see below)* |
-| `Limit(n)` | LIMIT value | ComposeOptions |
-| `Offset(n)` | OFFSET value | ComposeOptions |
+| `Returning("field1,field2")` | Fields for RETURNING clause | Insert |
+| `Limit(n)` | LIMIT value | Select |
+| `Offset(n)` | OFFSET value | Select |
+| `Order("field [ASC\|DESC]")` | ORDER BY clause | Select |
 | `AddTargets(&var1, &var2)` | Extra scan targets | Pointers |
 | `Where("field = ?", val)` | WHERE with ? placeholders | ComposeOptions |
 
@@ -401,6 +408,8 @@ for rows.Next() {
 | `Pointer(name)` | `any` | Single field pointer |
 | `Table()` | `string` | Table name |
 | `OrderBy(s)` | `string` | Validated ORDER BY clause |
+| `Select(opts...)` | `string, []any, error` | Full SELECT query + args |
+| `Insert(opts...)` | `string, []any, error` | Full INSERT query + values |
 | `Returning(fields)` | `string` | RETURNING clause |
 | `LimitOffset(limit, offset)` | `string` | LIMIT/OFFSET clause |
 | `BuildConditions(m, prefix)` | `[]string, []any` | WHERE conditions from map |
