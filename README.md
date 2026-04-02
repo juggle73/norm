@@ -15,14 +15,16 @@ package main
 
 import (
     "context"
+    "database/sql"
 
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/juggle73/norm/v3"
+    "github.com/juggle73/norm/v3/migrate"
 )
 
 type User struct {
     Id    int64  `norm:"pk"`
-    Name  string
+    Name  string `norm:"notnull"`
     Email string
 }
 
@@ -32,30 +34,38 @@ func main() {
 
     orm := norm.NewNorm(nil)
 
+    // Register models
+    orm.AddModel(&User{}, "users")
+
+    // Sync tables (create if not exist, add missing columns)
+    db, _ := sql.Open("pgx", "postgres://localhost/mydb")
+    mig := migrate.New(db, orm)
+    _ = mig.Sync(ctx)
+
     // SELECT
     user := User{}
     m, _ := orm.M(&user)
     sql, args, _ := m.Select(norm.Where("id = ?", 42))
-    // → "SELECT id, name, email FROM user WHERE id=$1"
+    // → "SELECT id, name, email FROM users WHERE id=$1"
     _ = pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
 
     // INSERT
     newUser := User{Name: "Alice", Email: "alice@example.com"}
     m, _ = orm.M(&newUser)
     sql, vals, _ := m.Insert(norm.Exclude("id"), norm.Returning("Id"))
-    // → "INSERT INTO user (name, email) VALUES ($1, $2) RETURNING id"
+    // → "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id"
     _ = pool.QueryRow(ctx, sql, vals...).Scan(m.Pointer("Id"))
 
     // UPDATE
     user.Name = "Bob"
     m, _ = orm.M(&user)
     sql, args, _ = m.Update(norm.Exclude("id"), norm.Where("id = ?", user.Id))
-    // → "UPDATE user SET name=$1, email=$2 WHERE id=$3"
+    // → "UPDATE users SET name=$1, email=$2 WHERE id=$3"
     _, _ = pool.Exec(ctx, sql, args...)
 
     // DELETE
     sql, args, _ = m.Delete(norm.Where("id = ?", user.Id))
-    // → "DELETE FROM user WHERE id=$1"
+    // → "DELETE FROM users WHERE id=$1"
     _, _ = pool.Exec(ctx, sql, args...)
 }
 ```
