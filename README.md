@@ -510,6 +510,68 @@ for tableName, source := range results {
 
 Generated structs include norm tags (`pk`, `notnull`, `unique`, `fk=...`) detected from database constraints.
 
+## Migrations
+
+Automatically create and alter tables based on your Go structs. Lives in the `migrate` subpackage:
+
+```go
+import "github.com/juggle73/norm/v3/migrate"
+
+orm := norm.NewNorm(nil)
+orm.M(&User{})
+orm.M(&Order{})
+
+mig := migrate.New(db, orm)
+```
+
+### Sync (development)
+
+Creates missing tables and adds missing columns. Never drops or modifies existing columns — safe for development:
+
+```go
+err := mig.Sync(ctx)
+```
+
+### Diff (production)
+
+Generates a full SQL diff for review — includes CREATE TABLE, ADD/DROP COLUMN, ALTER TYPE, SET/DROP NOT NULL:
+
+```go
+sql, err := mig.Diff(ctx)
+fmt.Println(sql)
+// CREATE TABLE IF NOT EXISTS order (
+//     id integer NOT NULL,
+//     user_id integer NOT NULL,
+//     total integer,
+//     PRIMARY KEY (id),
+//     FOREIGN KEY (user_id) REFERENCES user(id)
+// );
+// ALTER TABLE user ADD COLUMN IF NOT EXISTS age integer;
+// ALTER TABLE user DROP COLUMN old_field;
+```
+
+### CreateTableSQL
+
+Preview the CREATE TABLE statement for any registered model:
+
+```go
+fmt.Println(mig.CreateTableSQL("user"))
+```
+
+Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to override:
+
+| Go type | PostgreSQL type |
+|---------|----------------|
+| `int` | `integer` |
+| `int64` | `bigint` |
+| `float64` | `double precision` |
+| `string` | `text` (or `Config.DefaultString`) |
+| `bool` | `boolean` |
+| `time.Time` | `timestamptz` |
+| `struct` | `jsonb` |
+| `map[string]any` | `jsonb` |
+| `[]byte` | `bytea` |
+
 ## Options reference
 
 | Option | Description | Used by |

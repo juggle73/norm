@@ -119,3 +119,20 @@ func (n *Norm) Tables() []string {
 	}
 	return tables
 }
+
+// FieldsByTable returns field descriptors for a registered table.
+// Returns nil if the table is not registered.
+func (n *Norm) FieldsByTable(table string) []*Field {
+	n.mut.RLock()
+	defer n.mut.RUnlock()
+	meta, ok := n.tables[table]
+	if !ok {
+		return nil
+	}
+	return meta.fields
+}
+
+// GetConfig returns the Norm configuration.
+func (n *Norm) GetConfig() *Config {
+	return n.config
+}
