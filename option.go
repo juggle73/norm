@@ -85,6 +85,19 @@ func Prefix(prefix string) Option {
 	return prefixOption(prefix)
 }
 
+// BuildWhere renders a WHERE clause, replacing "?" placeholders with "$N"
+// starting from startBind. Returns the rendered string and the args slice.
+func BuildWhere(startBind int, where string, args ...any) (string, []any) {
+	result := where
+	bind := startBind
+	count := strings.Count(result, "?")
+	for i := 0; i < count; i++ {
+		result = strings.Replace(result, "?", fmt.Sprintf("$%d", bind), 1)
+		bind++
+	}
+	return result, args
+}
+
 func (opt *whereOption) Type() OptionType { return WhereOption }
 func (opt *whereOption) Value() any       { return opt }
 func Where(where string, args ...any) Option {
