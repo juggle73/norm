@@ -195,13 +195,12 @@ user := User{Id: 1, Name: "Bob", Email: "bob@new.com"}
 m, _ := orm.M(&user)
 
 set, nextBind := m.UpdateFields(norm.Exclude("id"))
-where, _ := norm.Where("id = ?", user.Id).(*norm.WhereOptionAccessor)
-whereStr, _ := where.Build(nextBind) // placeholder numbering continues from SET
+whereStr, whereArgs := norm.BuildWhere(nextBind, "id = ?", user.Id)
 
 sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s", m.Table(), set, whereStr)
 // → "UPDATE users SET name=$1, email=$2 WHERE id=$3"
 
-args := append(m.Values(norm.Exclude("id")), user.Id)
+args := append(m.Values(norm.Exclude("id")), whereArgs...)
 _, err := pool.Exec(ctx, sql, args...)
 ```
 

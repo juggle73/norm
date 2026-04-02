@@ -60,6 +60,38 @@ func TestParseWhere(t *testing.T) {
 	})
 }
 
+func TestBuildWhere(t *testing.T) {
+	t.Run("from 1", func(t *testing.T) {
+		s, args := BuildWhere(1, "name = ? AND age > ?", "John", 18)
+		if s != "name = $1 AND age > $2" {
+			t.Errorf("got %q", s)
+		}
+		if len(args) != 2 || args[0] != "John" || args[1] != 18 {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("from offset", func(t *testing.T) {
+		s, args := BuildWhere(4, "id = ?", 42)
+		if s != "id = $4" {
+			t.Errorf("got %q", s)
+		}
+		if len(args) != 1 || args[0] != 42 {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("no placeholders", func(t *testing.T) {
+		s, args := BuildWhere(1, "active = true")
+		if s != "active = true" {
+			t.Errorf("got %q", s)
+		}
+		if len(args) != 0 {
+			t.Errorf("expected no args, got %v", args)
+		}
+	})
+}
+
 func TestComposeOptions(t *testing.T) {
 	t.Run("empty options", func(t *testing.T) {
 		co := ComposeOptions()
