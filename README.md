@@ -1,6 +1,6 @@
 # norm - SQL query helper for Go structs
 
-norm is a lightweight library that simplifies building SQL queries from Go structs when working with PostgreSQL drivers (pgx). It is **not an ORM** - it does not execute queries or manage connections. Instead, it generates SQL fragments (field lists, bind parameters, WHERE conditions) that you compose into queries yourself.
+norm is a lightweight library that simplifies building SQL queries from Go structs for PostgreSQL. It is **not an ORM** — it does not execute queries or manage connections. Instead, it generates SQL fragments (field lists, bind parameters, WHERE conditions) that you compose into queries yourself. Works with any PostgreSQL driver (pgx, lib/pq, etc.).
 
 ## Install
 
