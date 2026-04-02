@@ -491,9 +491,19 @@ conds, vals := m.BuildConditions(norm.Like("name", "%john%"))
 conds, vals := m.BuildConditions(norm.IsNull("email", true))
 // conds = ["email IS NULL"], vals = []
 
-// With table prefix (for JOINs)
+// With table prefix (for JOINs) — inline or global
+conds, vals := m.BuildConditions(norm.Eq("u.name", "John"))
+// conds = ["u.name=$1"]
+
+// Global prefix applies to all conditions without inline prefix
 conds, vals := m.BuildConditions(norm.Eq("name", "John"), norm.Prefix("u."))
 // conds = ["u.name=$1"]
+
+// Mix different prefixes in one call
+conds, vals := m.BuildConditions(
+    norm.Eq("u.name", "John"),
+    norm.Gte("o.total", 100),
+)
 
 // JSON field access
 conds, vals := m.BuildConditions(norm.Eq("data->>key", "value"))

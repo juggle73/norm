@@ -105,37 +105,48 @@ func In(field string, values ...any) Cond {
 	return condIn{field: field, values: values}
 }
 
-// parseFieldSuffix splits "data->>key" into ("data", "->>key").
-// Returns (field, "") if no JSON accessor is present.
-func parseFieldSuffix(field string) (string, string) {
-	parts := strings.Split(field, "->>")
-	if len(parts) == 2 {
-		return parts[0], "->>" + parts[1]
+// parseFieldParts splits a field reference into (prefix, fieldName, suffix).
+//
+//	"name"          → ("", "name", "")
+//	"t.name"        → ("t.", "name", "")
+//	"data->>key"    → ("", "data", "->>key")
+//	"t.data->>key"  → ("t.", "data", "->>key")
+func parseFieldParts(field string) (prefix, name, suffix string) {
+	// Extract JSON accessor suffix
+	if i := strings.Index(field, "->>"); i >= 0 {
+		suffix = field[i:]
+		field = field[:i]
 	}
-	return field, ""
+
+	// Extract dot prefix
+	if i := strings.LastIndex(field, "."); i >= 0 {
+		prefix = field[:i+1]
+		field = field[i+1:]
+	}
+
+	return prefix, field, suffix
 }
 
 // BuildConditions builds SQL WHERE conditions from typed [Cond] values.
 // Returns a slice of condition strings and a slice of bind values.
 //
-// Use [Prefix] to add a table alias to all column references (e.g. for JOINs).
 // Field names accept any format (struct name, camelCase, snake_case).
+// Dot-prefixed names like "u.name" are supported — the prefix is preserved
+// in the output SQL, and the field is looked up without it.
+// Use [Prefix] to add the same prefix to all conditions at once.
 // Use "field->>jsonKey" for JSON field access.
 //
 //	conds, vals := m.BuildConditions(
-//	    norm.Eq("name", "John"),
-//	    norm.Gte("age", 18),
-//	    norm.Lt("age", 65),
-//	    norm.In("id", 1, 2, 3),
-//	    norm.Like("email", "%@gmail.com"),
-//	    norm.IsNull("deleted_at", true),
-//	    norm.Prefix("u."),
+//	    norm.Eq("u.name", "John"),
+//	    norm.Gte("u.age", 18),
+//	    norm.In("o.id", 1, 2, 3),
+//	    norm.IsNull("u.deleted_at", true),
 //	)
 func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
-	var prefix string
+	var globalPrefix string
 	for _, c := range conds {
 		if p, ok := c.(prefixOption); ok {
-			prefix = string(p)
+			globalPrefix = string(p)
 		}
 	}
 
@@ -145,13 +156,17 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 	for _, c := range conds {
 		switch v := c.(type) {
 		case condition:
-			fieldName, suffix := parseFieldSuffix(v.field)
+			p, fieldName, suffix := parseFieldParts(v.field)
 			f, ok := m.fieldByAnyName[fieldName]
 			if !ok {
 				continue
 			}
 			values = append(values, v.value)
-			dbField := prefix + f.dbName + suffix
+			pfx := p
+			if pfx == "" {
+				pfx = globalPrefix
+			}
+			dbField := pfx + f.dbName + suffix
 			if v.op == "=" {
 				conditions = append(conditions, fmt.Sprintf("%s=$%d", dbField, len(values)))
 			} else {
@@ -159,10 +174,14 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 			}
 
 		case condIn:
-			fieldName, suffix := parseFieldSuffix(v.field)
+			p, fieldName, suffix := parseFieldParts(v.field)
 			f, ok := m.fieldByAnyName[fieldName]
 			if !ok {
 				continue
+			}
+			pfx := p
+			if pfx == "" {
+				pfx = globalPrefix
 			}
 			placeholders := make([]string, len(v.values))
 			for i, val := range v.values {
@@ -170,18 +189,22 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 				placeholders[i] = fmt.Sprintf("$%d", len(values))
 			}
 			conditions = append(conditions, fmt.Sprintf("%s%s%s IN (%s)",
-				prefix, f.dbName, suffix, strings.Join(placeholders, ", ")))
+				pfx, f.dbName, suffix, strings.Join(placeholders, ", ")))
 
 		case condIsNull:
-			fieldName, suffix := parseFieldSuffix(v.field)
+			p, fieldName, suffix := parseFieldParts(v.field)
 			f, ok := m.fieldByAnyName[fieldName]
 			if !ok {
 				continue
 			}
+			pfx := p
+			if pfx == "" {
+				pfx = globalPrefix
+			}
 			if v.isNull {
-				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NULL", prefix, f.dbName, suffix))
+				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NULL", pfx, f.dbName, suffix))
 			} else {
-				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NOT NULL", prefix, f.dbName, suffix))
+				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NOT NULL", pfx, f.dbName, suffix))
 			}
 		}
 	}
