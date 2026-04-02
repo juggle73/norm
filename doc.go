@@ -31,6 +31,18 @@
 //	sql, vals, _ := m.Insert(norm.Exclude("id"))
 //	_, _ = pool.Exec(ctx, sql, vals...)
 //
+// # Field and table naming
+//
+// All names are automatically converted to snake_case:
+//
+//	UserProfile → user_profile (table)
+//	UserName    → user_name   (column)
+//	CreatedAt   → created_at  (column)
+//
+// If your database column doesn't follow snake_case, override with dbName:
+//
+//	UserName string `norm:"dbName=username"` // → column "username"
+//
 // # Struct tags
 //
 // Fields are configured via the "norm" struct tag:
