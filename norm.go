@@ -8,7 +8,9 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-// Norm base struct
+// Norm is the entry point for the norm library. It caches struct metadata
+// so that reflection only happens once per type. Create one instance per
+// application and reuse it — it is safe for concurrent use.
 type Norm struct {
 	metas  map[reflect.Type]*modelMeta
 	tables map[string]*modelMeta
@@ -16,13 +18,19 @@ type Norm struct {
 	config *Config
 }
 
+// Config holds optional configuration for a [Norm] instance.
 type Config struct {
+	// DefaultString sets the PostgreSQL type used for Go string fields
+	// when no dbType tag is specified. Defaults to "text".
 	DefaultString string
 }
 
 var defaultConfig = &Config{DefaultString: "text"}
 
-// NewNorm creates a new Norm instance
+// NewNorm creates a new [Norm] instance. Pass nil for default configuration.
+//
+//	orm := norm.NewNorm(nil)
+//	orm := norm.NewNorm(&norm.Config{DefaultString: "varchar"})
 func NewNorm(config *Config) *Norm {
 	if config == nil {
 		config = defaultConfig
@@ -34,7 +42,10 @@ func NewNorm(config *Config) *Norm {
 	}
 }
 
-// AddModel registers a model with an explicit table name and returns a Model bound to obj.
+// AddModel registers a struct with an explicit table name and returns
+// a [Model] bound to obj. Panics if obj is not a struct or pointer to struct.
+//
+//	orm.AddModel(&User{}, "app_users")
 func (n *Norm) AddModel(obj any, table string) *Model {
 	meta := newModelMeta(n.config)
 
@@ -53,11 +64,14 @@ func (n *Norm) AddModel(obj any, table string) *Model {
 	return &Model{modelMeta: meta, val: val.Elem()}
 }
 
-// M returns a *Model bound to obj.
+// M returns a [Model] bound to obj. obj must be a pointer to a struct.
 //
-//	obj - must be a pointer to a struct.
+// Struct metadata is cached by type — reflection happens only on the first
+// call for each struct type. Each call returns a new Model bound to the
+// given obj instance.
 //
-// Metadata is cached by struct type. Each call returns a new Model bound to the given obj.
+//	user := User{Id: 1, Name: "John"}
+//	m, err := orm.M(&user)
 func (n *Norm) M(obj any) (*Model, error) {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
@@ -75,6 +89,7 @@ func (n *Norm) M(obj any) (*Model, error) {
 	return &Model{modelMeta: meta, val: val.Elem()}, nil
 }
 
+// Tables returns a list of all registered table names.
 func (n *Norm) Tables() []string {
 	n.mut.RLock()
 	defer n.mut.RUnlock()

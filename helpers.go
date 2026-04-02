@@ -2,17 +2,18 @@ package norm
 
 import (
 	"fmt"
-	"github.com/iancoleman/strcase"
 	"reflect"
 	"strings"
+
+	"github.com/iancoleman/strcase"
 )
 
-// isPointerToStruct checks is reflect.Value is pointer to struct
+// isPointerToStruct reports whether v is a pointer to a struct.
 func isPointerToStruct(v reflect.Value) bool {
 	return v.Kind() == reflect.Pointer && v.Elem().Kind() == reflect.Struct
 }
 
-// has checks is there a value val in slice a
+// has reports whether the string slice a contains val (after trimming spaces).
 func has(a []string, val string) bool {
 	for i := range a {
 		if strings.TrimSpace(a[i]) == val {
@@ -22,7 +23,11 @@ func has(a []string, val string) bool {
 	return false
 }
 
-// Binds generates sql binds string in "$1, $2, ..." format
+// Binds generates a bind placeholder string in "$1, $2, ..." format
+// for the given number of parameters.
+//
+//	norm.Binds(3) // "$1, $2, $3"
+//	norm.Binds(0) // ""
 func Binds(count int) string {
 	if count == 0 {
 		return ""
@@ -35,6 +40,10 @@ func Binds(count int) string {
 	return str
 }
 
+// parseNormTag parses the "norm" struct tag and returns a map of key-value
+// pairs. Returns (nil, false) if the field should be skipped (tag is "-").
+// If no tag is present, returns a map with only "dbName" set to the
+// snake_case of the field name.
 func parseNormTag(field reflect.StructField) (map[string]string, bool) {
 	res := make(map[string]string)
 
@@ -66,7 +75,9 @@ func parseNormTag(field reflect.StructField) (map[string]string, bool) {
 	return res, true
 }
 
-// isValidIdentifier checks that name contains only [a-zA-Z0-9_] and is not empty
+// isValidIdentifier reports whether name contains only [a-zA-Z0-9_]
+// and is not empty. Used to validate table and column names against
+// SQL injection.
 func isValidIdentifier(name string) bool {
 	if name == "" {
 		return false
@@ -79,7 +90,7 @@ func isValidIdentifier(name string) bool {
 	return true
 }
 
-// indirectType returns the type that v points to.
+// indirectType follows pointer types until it reaches a non-pointer type.
 func indirectType(v reflect.Type) reflect.Type {
 	for v.Kind() == reflect.Pointer {
 		v = v.Elem()
