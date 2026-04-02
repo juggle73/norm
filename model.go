@@ -187,7 +187,12 @@ func (m *Model) Pointers(opts ...Option) []any {
 
 	res := make([]any, 0, len(ff)+len(co.AddTargets))
 	for _, f := range ff {
-		res = append(res, m.val.FieldByName(f.name).Addr().Interface())
+		ptr := m.val.FieldByName(f.name).Addr().Interface()
+		if f.isJSON() {
+			res = append(res, &jsonScanner{target: ptr})
+		} else {
+			res = append(res, ptr)
+		}
 	}
 
 	for _, p := range co.AddTargets {
@@ -211,7 +216,16 @@ func (m *Model) Values(opts ...Option) []any {
 
 	res := make([]any, 0, len(ff))
 	for _, f := range ff {
-		res = append(res, m.val.FieldByName(f.name).Interface())
+		val := m.val.FieldByName(f.name).Interface()
+		if f.isJSON() {
+			b, err := jsonValue(val)
+			if err != nil {
+				panic(fmt.Sprintf("Values: json marshal field %q: %v", f.name, err))
+			}
+			res = append(res, b)
+		} else {
+			res = append(res, val)
+		}
 	}
 
 	return res
@@ -277,7 +291,16 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	for i, f := range ff {
 		cols = append(cols, f.dbName)
 		binds = append(binds, fmt.Sprintf("$%d", i+1))
-		vals = append(vals, m.val.FieldByName(f.name).Interface())
+		val := m.val.FieldByName(f.name).Interface()
+		if f.isJSON() {
+			b, err := jsonValue(val)
+			if err != nil {
+				return "", nil, fmt.Errorf("Insert: json marshal field %q: %w", f.name, err)
+			}
+			vals = append(vals, b)
+		} else {
+			vals = append(vals, val)
+		}
 	}
 
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
@@ -314,7 +337,16 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 
 	for i, f := range ff {
 		setCols = append(setCols, fmt.Sprintf("%s=$%d", f.dbName, i+1))
-		vals = append(vals, m.val.FieldByName(f.name).Interface())
+		val := m.val.FieldByName(f.name).Interface()
+		if f.isJSON() {
+			b, err := jsonValue(val)
+			if err != nil {
+				return "", nil, fmt.Errorf("Update: json marshal field %q: %w", f.name, err)
+			}
+			vals = append(vals, b)
+		} else {
+			vals = append(vals, val)
+		}
 	}
 
 	sql := fmt.Sprintf("UPDATE %s SET %s", m.table, strings.Join(setCols, ", "))

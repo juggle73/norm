@@ -856,3 +856,185 @@ func TestModelBoundToInstance(t *testing.T) {
 		}
 	})
 }
+
+// --- JSON struct field tests ---
+
+type JSONAddress struct {
+	City   string `json:"city"`
+	Street string `json:"street"`
+}
+
+type JSONUser struct {
+	Id      int          `norm:"pk"`
+	Name    string
+	Address JSONAddress
+}
+
+type JSONUserPtr struct {
+	Id      int           `norm:"pk"`
+	Name    string
+	Address *JSONAddress
+}
+
+func TestJSONValues(t *testing.T) {
+	n := NewNorm(nil)
+
+	t.Run("struct field marshaled to JSON bytes", func(t *testing.T) {
+		user := &JSONUser{Id: 1, Name: "Alice", Address: JSONAddress{City: "Moscow", Street: "Tverskaya"}}
+		m, _ := n.M(user)
+		vals := m.Values()
+
+		// vals[2] should be []byte of JSON
+		b, ok := vals[2].([]byte)
+		if !ok {
+			t.Fatalf("expected []byte, got %T", vals[2])
+		}
+		if string(b) != `{"city":"Moscow","street":"Tverskaya"}` {
+			t.Errorf("unexpected JSON: %s", string(b))
+		}
+	})
+
+	t.Run("pointer struct field marshaled to JSON bytes", func(t *testing.T) {
+		user := &JSONUserPtr{Id: 1, Name: "Bob", Address: &JSONAddress{City: "SPb", Street: "Nevsky"}}
+		m, _ := n.M(user)
+		vals := m.Values()
+
+		b, ok := vals[2].([]byte)
+		if !ok {
+			t.Fatalf("expected []byte, got %T", vals[2])
+		}
+		if string(b) != `{"city":"SPb","street":"Nevsky"}` {
+			t.Errorf("unexpected JSON: %s", string(b))
+		}
+	})
+
+	t.Run("nil pointer struct marshals to null", func(t *testing.T) {
+		user := &JSONUserPtr{Id: 1, Name: "Bob", Address: nil}
+		m, _ := n.M(user)
+		vals := m.Values()
+
+		b, ok := vals[2].([]byte)
+		if !ok {
+			t.Fatalf("expected []byte, got %T", vals[2])
+		}
+		if string(b) != "null" {
+			t.Errorf("expected null, got %s", string(b))
+		}
+	})
+}
+
+func TestJSONPointers(t *testing.T) {
+	n := NewNorm(nil)
+
+	t.Run("struct field scanned from JSON", func(t *testing.T) {
+		user := &JSONUser{}
+		m, _ := n.M(user)
+		ptrs := m.Pointers()
+
+		// ptrs[2] should be a *jsonScanner
+		scanner, ok := ptrs[2].(*jsonScanner)
+		if !ok {
+			t.Fatalf("expected *jsonScanner, got %T", ptrs[2])
+		}
+
+		// Simulate scanning
+		err := scanner.Scan([]byte(`{"city":"Tokyo","street":"Shibuya"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user.Address.City != "Tokyo" || user.Address.Street != "Shibuya" {
+			t.Errorf("unexpected address: %+v", user.Address)
+		}
+	})
+
+	t.Run("pointer struct field scanned from JSON", func(t *testing.T) {
+		user := &JSONUserPtr{Address: &JSONAddress{}}
+		m, _ := n.M(user)
+		ptrs := m.Pointers()
+
+		scanner, ok := ptrs[2].(*jsonScanner)
+		if !ok {
+			t.Fatalf("expected *jsonScanner, got %T", ptrs[2])
+		}
+
+		err := scanner.Scan([]byte(`{"city":"Berlin","street":"Unter"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user.Address.City != "Berlin" {
+			t.Errorf("unexpected city: %s", user.Address.City)
+		}
+	})
+
+	t.Run("scan from string", func(t *testing.T) {
+		user := &JSONUser{}
+		m, _ := n.M(user)
+		ptrs := m.Pointers()
+
+		scanner := ptrs[2].(*jsonScanner)
+		err := scanner.Scan(`{"city":"Paris","street":"Champs"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user.Address.City != "Paris" {
+			t.Errorf("expected Paris, got %s", user.Address.City)
+		}
+	})
+
+	t.Run("scan nil is no-op", func(t *testing.T) {
+		user := &JSONUser{Address: JSONAddress{City: "Old"}}
+		m, _ := n.M(user)
+		ptrs := m.Pointers()
+
+		scanner := ptrs[2].(*jsonScanner)
+		err := scanner.Scan(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user.Address.City != "Old" {
+			t.Errorf("expected Old unchanged, got %s", user.Address.City)
+		}
+	})
+}
+
+func TestJSONInsert(t *testing.T) {
+	n := NewNorm(nil)
+	user := &JSONUser{Id: 1, Name: "Alice", Address: JSONAddress{City: "NY", Street: "Broadway"}}
+	m, _ := n.M(user)
+
+	sql, vals, err := m.Insert(Exclude("id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != "INSERT INTO json_user (name, address) VALUES ($1, $2)" {
+		t.Errorf("got %q", sql)
+	}
+	b, ok := vals[1].([]byte)
+	if !ok {
+		t.Fatalf("expected []byte, got %T", vals[1])
+	}
+	if string(b) != `{"city":"NY","street":"Broadway"}` {
+		t.Errorf("unexpected JSON: %s", string(b))
+	}
+}
+
+func TestJSONUpdate(t *testing.T) {
+	n := NewNorm(nil)
+	user := &JSONUser{Id: 1, Name: "Alice", Address: JSONAddress{City: "LA", Street: "Sunset"}}
+	m, _ := n.M(user)
+
+	sql, vals, err := m.Update(Exclude("id"), Where("id = ?", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != "UPDATE json_user SET name=$1, address=$2 WHERE id = $3" {
+		t.Errorf("got %q", sql)
+	}
+	b, ok := vals[1].([]byte)
+	if !ok {
+		t.Fatalf("expected []byte, got %T", vals[1])
+	}
+	if string(b) != `{"city":"LA","street":"Sunset"}` {
+		t.Errorf("unexpected JSON: %s", string(b))
+	}
+}
