@@ -2,6 +2,30 @@
 
 norm is a lightweight library that simplifies building SQL queries from Go structs for PostgreSQL. It is **not an ORM** — it does not execute queries or manage connections. Instead, it generates SQL fragments (field lists, bind parameters, WHERE conditions) that you compose into queries yourself. Works with any PostgreSQL driver (pgx, lib/pq, etc.).
 
+## Table of contents
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Core concepts](#core-concepts)
+- [Field and table naming](#field-and-table-naming)
+- [Struct tags](#struct-tags)
+- [Embedded structs](#embedded-structs)
+- [JSON struct fields](#json-struct-fields)
+- [Query building](#query-building)
+  - [SELECT](#select) · [INSERT](#insert) · [UPDATE](#update) · [DELETE](#delete)
+  - [JOIN](#join) · [Auto JOIN with FK tags](#auto-join-with-fk-tags)
+  - [ORDER BY](#order-by) · [LIMIT / OFFSET](#limit--offset) · [Extra scan targets](#extra-scan-targets)
+- [WHERE conditions builder](#where-conditions-builder)
+- [Code generation](#code-generation)
+- [Migrations](#migrations)
+- [Options reference](#options-reference)
+- [Model methods reference](#model-methods-reference)
+- [Join methods reference](#join-methods-reference)
+- [Norm methods reference](#norm-methods-reference)
+- [Migrate methods reference](#migrate-methods-reference)
+- [Benchmarks](#benchmarks)
+- [Important notes](#important-notes)
+
 ## Install
 
 ```shell
@@ -731,7 +755,7 @@ Run benchmarks yourself:
 go test -bench=. -benchmem -run=^$
 ```
 
-## Important notes on v3
+## Important notes
 
 - `M(&obj)` returns a Model **bound to that specific instance**. `Pointers()`, `Values()`, and `Pointer()` work with the bound instance without additional parameters.
 - Model is **not safe for concurrent use**. Each goroutine should call `M()` to get its own Model.
