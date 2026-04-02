@@ -118,6 +118,7 @@ type User struct {
 | `default=value` | Set DEFAULT value |
 | `dbName=name` | Override column name (default: snake_case of field name) |
 | `dbType=type` | Override PostgreSQL type |
+| `fk=ModelName` | Mark as foreign key (accepts any format: `UserType`, `userType`, `user_type`) |
 | `-` | Skip field entirely |
 
 ## Embedded structs
@@ -141,6 +142,40 @@ type User struct {
 ```
 
 Both value and pointer embeddings are supported (`BaseModel` and `*BaseModel`).
+
+## JSON struct fields
+
+Fields of type struct or `*struct` (except `time.Time`) are automatically marshaled to JSON when writing and unmarshaled when reading. No tags required:
+
+```go
+type Address struct {
+    City   string `json:"city"`
+    Street string `json:"street"`
+}
+
+type User struct {
+    Id      int     `norm:"pk"`
+    Name    string
+    Address Address // automatically handled as JSON
+}
+
+orm := norm.NewNorm(nil)
+
+// INSERT — Address is marshaled to JSON bytes
+user := User{Name: "Alice", Address: Address{City: "Moscow", Street: "Tverskaya"}}
+m, _ := orm.M(&user)
+sql, vals, _ := m.Insert(norm.Exclude("id"))
+// vals = ["Alice", []byte(`{"city":"Moscow","street":"Tverskaya"}`)]
+
+// SELECT — Address is unmarshaled from JSON
+var loaded User
+m, _ = orm.M(&loaded)
+sql, args, _ = m.Select(norm.Where("id = ?", 1))
+_ = pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
+// loaded.Address.City == "Moscow"
+```
+
+Pointer struct fields (`*Address`) work the same way. `nil` pointers marshal to `null`.
 
 ## Query building
 
@@ -304,6 +339,42 @@ err := pool.QueryRow(ctx, sql, args...).Scan(j.Pointers()...)
 
 Supported join types: `Inner`, `Left`, `Right`.
 
+### Auto JOIN with FK tags
+
+If your structs have `fk` tags, use `Auto` / `AutoLeft` to build JOINs without writing ON clauses:
+
+```go
+type User struct {
+    Id   int    `norm:"pk"`
+    Name string
+}
+
+type Order struct {
+    Id     int `norm:"pk"`
+    UserId int `norm:"fk=User"`
+    Total  int
+}
+
+type OrderItem struct {
+    Id      int    `norm:"pk"`
+    OrderId int    `norm:"fk=Order"`
+    Product string
+}
+
+mUser, _ := orm.M(&user)
+mOrder, _ := orm.M(&order)
+mItem, _ := orm.M(&item)
+
+j := norm.NewJoin(mUser).
+    Auto(mOrder).       // → INNER JOIN order ON order.user_id = user.id
+    AutoLeft(mItem)     // → LEFT JOIN order_item ON order_item.order_id = order.id
+
+sql, args, _ := j.Select()
+err := pool.QueryRow(ctx, sql, args...).Scan(j.Pointers()...)
+```
+
+Auto works in both directions — it finds the FK regardless of which model defines it. Panics if the relationship is ambiguous (multiple FKs to the same table) or missing — use `Inner`/`Left`/`Right` in those cases.
+
 ### ORDER BY
 
 Field names are validated against the model and converted to database column names:
@@ -400,17 +471,20 @@ conds, vals := m.BuildConditions(map[string]any{
 
 ## Code generation
 
-Generate Go structs from an existing database schema:
+Generate Go structs from an existing database schema. Code generation lives in a separate subpackage:
 
 ```go
-orm := norm.NewNorm(nil)
-results, err := orm.GenFromDb(pool, "models", "public")
+import "github.com/juggle73/norm/v3/gen"
+
+results, err := gen.FromDB(ctx, pool, "models", "public")
 // results is map[tableName]string with generated Go source code
 
 for tableName, source := range results {
     os.WriteFile(tableName+".go", []byte(source), 0644)
 }
 ```
+
+Generated structs include norm tags (`pk`, `notnull`, `unique`, `fk=...`) detected from database constraints.
 
 ## Options reference
 
@@ -457,6 +531,8 @@ for tableName, source := range results {
 | `Inner(m, on)` | `*Join` | Add INNER JOIN |
 | `Left(m, on)` | `*Join` | Add LEFT JOIN |
 | `Right(m, on)` | `*Join` | Add RIGHT JOIN |
+| `Auto(m)` | `*Join` | INNER JOIN with ON from FK tags |
+| `AutoLeft(m)` | `*Join` | LEFT JOIN with ON from FK tags |
 | `Where(s, args...)` | `*Join` | Set WHERE clause |
 | `Order(s)` | `*Join` | Set ORDER BY (raw SQL) |
 | `Limit(n)` | `*Join` | Set LIMIT |
