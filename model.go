@@ -10,8 +10,8 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-// Model a struct to cache your struct reflect data
-type Model struct {
+// modelMeta caches struct reflection metadata. Thread-safe for concurrent reads.
+type modelMeta struct {
 	table          string
 	valType        reflect.Type
 	fields         []*Field
@@ -23,15 +23,22 @@ type Model struct {
 	unique []string
 }
 
-// NewModel creates a new Model instance
-func NewModel(config *Config) *Model {
-	return &Model{
+// Model binds cached metadata to a specific struct instance.
+// Not safe for concurrent use.
+type Model struct {
+	*modelMeta
+	val reflect.Value
+}
+
+// newModelMeta creates a new modelMeta instance
+func newModelMeta(config *Config) *modelMeta {
+	return &modelMeta{
 		config: config,
 	}
 }
 
-// Parse parses an obj struct fields and save it to Model
-func (m *Model) Parse(obj any, table string) error {
+// Parse parses an obj struct fields and save it to modelMeta
+func (m *modelMeta) Parse(obj any, table string) error {
 	val := reflect.Indirect(reflect.ValueOf(obj))
 	if val.Kind() != reflect.Struct {
 		return errors.New("object must be a struct or pointer to struct")
@@ -62,7 +69,7 @@ func (m *Model) Parse(obj any, table string) error {
 }
 
 // parseFields recursively parses struct fields, including embedded structs
-func (m *Model) parseFields(t reflect.Type) {
+func (m *modelMeta) parseFields(t reflect.Type) {
 	c := t.NumField()
 	for i := 0; i < c; i++ {
 		f := t.Field(i)
@@ -110,7 +117,7 @@ func (m *Model) parseFields(t reflect.Type) {
 
 // filteredFields returns fields filtered by options and the composed options.
 // Must be called under m.mut.RLock.
-func (m *Model) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
+func (m *modelMeta) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 	co := ComposeOptions(opts...)
 
 	res := make([]*Field, 0, len(m.fields))
@@ -129,7 +136,7 @@ func (m *Model) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 
 // Fields returns slice of fields database names with prefix in snake-case, excluding
 // specified in the parameter exclude
-func (m *Model) Fields(opts ...Option) string {
+func (m *modelMeta) Fields(opts ...Option) string {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
@@ -146,7 +153,7 @@ func (m *Model) Fields(opts ...Option) string {
 // UpdateFields returns comma separated fields database names in snake-case
 // in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude,
 // and next bind number
-func (m *Model) UpdateFields(opts ...Option) (string, int) {
+func (m *modelMeta) UpdateFields(opts ...Option) (string, int) {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
@@ -162,7 +169,7 @@ func (m *Model) UpdateFields(opts ...Option) (string, int) {
 
 // Binds returns comma separated binds in format $<bind no.> for count of fields, excluding
 // specified in the parameter exclude
-func (m *Model) Binds(opts ...Option) string {
+func (m *modelMeta) Binds(opts ...Option) string {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
@@ -176,23 +183,16 @@ func (m *Model) Binds(opts ...Option) string {
 	return strings.Join(res, ", ")
 }
 
-// Pointers returns slice of field pointers for obj, excluding specified in the parameter exclude.
-// Panics if obj is not a pointer to struct.
-func (m *Model) Pointers(obj any, opts ...Option) []any {
-	val := reflect.ValueOf(obj)
-	if !isPointerToStruct(val) {
-		panic("Pointers: object must be a pointer to struct")
-	}
-
+// Pointers returns slice of field pointers for the bound struct instance.
+func (m *Model) Pointers(opts ...Option) []any {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
 	ff, co := m.filteredFields(opts...)
-	val = val.Elem()
 
 	res := make([]any, 0, len(ff)+len(co.AddTargets))
 	for _, f := range ff {
-		res = append(res, val.FieldByName(f.name).Addr().Interface())
+		res = append(res, m.val.FieldByName(f.name).Addr().Interface())
 	}
 
 	for _, p := range co.AddTargets {
@@ -202,51 +202,38 @@ func (m *Model) Pointers(obj any, opts ...Option) []any {
 	return res
 }
 
-// Pointer find field by name in obj and returns field pointer.
-// Panics if obj is not a pointer to struct.
-func (m *Model) Pointer(obj any, name string) any {
-	val := reflect.ValueOf(obj)
-	if !isPointerToStruct(val) {
-		panic("Pointer: object must be a pointer to struct")
-	}
-
-	return val.Elem().FieldByName(name).Addr().Interface()
+// Pointer returns a pointer to the named field of the bound struct instance.
+func (m *Model) Pointer(name string) any {
+	return m.val.FieldByName(name).Addr().Interface()
 }
 
-// Values returns slice of field values as interface{} for obj, excluding specified in the parameter exclude.
-// Panics if obj is not a pointer to struct.
-func (m *Model) Values(obj any, opts ...Option) []any {
-	val := reflect.ValueOf(obj)
-	if !isPointerToStruct(val) {
-		panic("Values: object must be a pointer to struct")
-	}
-
+// Values returns slice of field values for the bound struct instance.
+func (m *Model) Values(opts ...Option) []any {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
 	ff, _ := m.filteredFields(opts...)
-	val = val.Elem()
 
 	res := make([]any, 0, len(ff))
 	for _, f := range ff {
-		res = append(res, val.FieldByName(f.name).Interface())
+		res = append(res, m.val.FieldByName(f.name).Interface())
 	}
 
 	return res
 }
 
 // NewInstance creates and returns new instance of struct
-func (m *Model) NewInstance() any {
+func (m *modelMeta) NewInstance() any {
 	return reflect.New(m.valType).Interface()
 }
 
 // Table returns model database table name
-func (m *Model) Table() string {
+func (m *modelMeta) Table() string {
 	return m.table
 }
 
 // FieldByName trying to find field by name and returns the *Field or error
-func (m *Model) FieldByName(name string) (*Field, bool) {
+func (m *modelMeta) FieldByName(name string) (*Field, bool) {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
@@ -256,7 +243,7 @@ func (m *Model) FieldByName(name string) (*Field, bool) {
 
 // Returning validates field names and returns a RETURNING clause string.
 // Panics if a field is not found in the model.
-func (m *Model) Returning(opts ...Option) string {
+func (m *modelMeta) Returning(opts ...Option) string {
 	co := ComposeOptions(opts...)
 	if len(co.Returning) == 0 {
 		return ""
@@ -279,7 +266,7 @@ func (m *Model) Returning(opts ...Option) string {
 }
 
 // LimitOffset returns a LIMIT/OFFSET clause string from options.
-func (m *Model) LimitOffset(opts ...Option) string {
+func (m *modelMeta) LimitOffset(opts ...Option) string {
 	co := ComposeOptions(opts...)
 
 	var parts []string
@@ -294,7 +281,7 @@ func (m *Model) LimitOffset(opts ...Option) string {
 }
 
 // FieldDescriptions returns the slice of *Field containing all model fields
-func (m *Model) FieldDescriptions() []*Field {
+func (m *modelMeta) FieldDescriptions() []*Field {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 	return m.fields
@@ -304,7 +291,7 @@ func (m *Model) FieldDescriptions() []*Field {
 // Each entry must be "fieldName [ASC|DESC]". Field names are validated
 // against the model and converted to database column names.
 // Panics if a field is not found or direction is invalid.
-func (m *Model) OrderBy(orderBy string) string {
+func (m *modelMeta) OrderBy(orderBy string) string {
 	orderBy = strings.TrimSpace(orderBy)
 	if orderBy == "" {
 		return ""

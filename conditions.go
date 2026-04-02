@@ -31,7 +31,7 @@ type conditionBuilder struct {
 //	obj.value:
 //	  for string field type:
 //	    string - add [field]=[value] condition
-func (m *Model) BuildConditions(obj map[string]any, prefix string) ([]string, []any) {
+func (m *modelMeta) BuildConditions(obj map[string]any, prefix string) ([]string, []any) {
 
 	builder := conditionBuilder{
 		conditions: make([]string, 0),

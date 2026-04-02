@@ -20,7 +20,7 @@ var dbTypes = map[reflect.Kind]string{
 }
 
 // CreateTableSQL generates CREATE TABLE sql expression for Model
-func (m *Model) CreateTableSQL() string {
+func (m *modelMeta) CreateTableSQL() string {
 	fields := make([]string, 0)
 
 	for _, f := range m.fields {
@@ -46,7 +46,7 @@ func (m *Model) CreateTableSQL() string {
 // Migrate compares db field names with model fields and generates SQL statements to create missing table fields
 //
 //	Important! Migrate does not support field deletion and field data type change
-func (m *Model) Migrate(dbFieldNames []string) []string {
+func (m *modelMeta) Migrate(dbFieldNames []string) []string {
 	statements := make([]string, 0)
 
 	// New table
@@ -76,7 +76,7 @@ func (m *Model) Migrate(dbFieldNames []string) []string {
 }
 
 // fieldCreate creates a sql for field
-func (m *Model) fieldCreate(t reflect.Type, f *Field) string {
+func (m *modelMeta) fieldCreate(t reflect.Type, f *Field) string {
 	res := ""
 
 	var (

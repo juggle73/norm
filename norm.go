@@ -10,8 +10,8 @@ import (
 
 // Norm base struct
 type Norm struct {
-	models map[reflect.Type]*Model
-	tables map[string]*Model
+	metas  map[reflect.Type]*modelMeta
+	tables map[string]*modelMeta
 	mut    sync.RWMutex
 	config *Config
 }
@@ -34,11 +34,11 @@ func NewNorm(config *Config) *Norm {
 	return norm
 }
 
-// AddModel adds model to models cache
+// AddModel registers a model with an explicit table name and returns a Model bound to obj.
 func (n *Norm) AddModel(obj any, table string) *Model {
-	model := NewModel(n.config)
+	meta := newModelMeta(n.config)
 
-	err := model.Parse(obj, table)
+	err := meta.Parse(obj, table)
 	if err != nil {
 		panic(err)
 	}
@@ -46,43 +46,37 @@ func (n *Norm) AddModel(obj any, table string) *Model {
 	n.mut.Lock()
 	defer n.mut.Unlock()
 
-	if n.models == nil {
-		n.models = make(map[reflect.Type]*Model)
-		n.tables = make(map[string]*Model)
+	if n.metas == nil {
+		n.metas = make(map[reflect.Type]*modelMeta)
+		n.tables = make(map[string]*modelMeta)
 	}
-	n.models[model.valType] = model
-	n.tables[table] = model
+	n.metas[meta.valType] = meta
+	n.tables[table] = meta
 
-	return model
+	val := reflect.ValueOf(obj)
+	return &Model{modelMeta: meta, val: val.Elem()}
 }
 
-// M returns *Model for object
+// M returns a *Model bound to obj.
 //
 //	obj - must be a pointer to a struct.
 //
-// If Model for the object was not found in the cache, then a new model is created and added to the cache.
+// Metadata is cached by struct type. Each call returns a new Model bound to the given obj.
 func (n *Norm) M(obj any) (*Model, error) {
 	val := reflect.ValueOf(obj)
 	if !isPointerToStruct(val) {
 		return nil, errors.New("obj must be pointer to struct")
 	}
+
 	n.mut.RLock()
-	model, ok := n.models[val.Elem().Type()]
+	meta, ok := n.metas[val.Elem().Type()]
 	n.mut.RUnlock()
+
 	if !ok {
-		model = n.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name()))
+		return n.AddModel(obj, strcase.ToSnake(val.Elem().Type().Name())), nil
 	}
 
-	return model, nil
-}
-
-// T trying to find registered model by table name and returns *Model for object
-//
-// If it was not found in the cache, then returns nil
-func (n *Norm) T(table string) *Model {
-	n.mut.RLock()
-	defer n.mut.RUnlock()
-	return n.tables[table]
+	return &Model{modelMeta: meta, val: val.Elem()}, nil
 }
 
 func (n *Norm) Tables() []string {
