@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/iancoleman/strcase"
-	"github.com/juggle73/norm/v3"
+	"github.com/juggle73/norm/v4"
 )
 
 // Migrate compares registered norm models against the database schema

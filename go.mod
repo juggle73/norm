@@ -1,4 +1,4 @@
-module github.com/juggle73/norm/v3
+module github.com/juggle73/norm/v4
 
 go 1.21
 
