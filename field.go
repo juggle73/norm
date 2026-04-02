@@ -51,10 +51,10 @@ func (f *Field) Type() reflect.Type {
 	return f.valType
 }
 
-// isJSON reports whether the field should be marshaled/unmarshaled as JSON.
+// IsJSON reports whether the field should be marshaled/unmarshaled as JSON.
 // A field is JSON if its underlying type is a struct (but not time.Time).
 // Maps and slices are excluded — database drivers handle them natively.
-func (f *Field) isJSON() bool {
+func (f *Field) IsJSON() bool {
 	t := indirectType(f.valType)
 	return t.Kind() == reflect.Struct && t != reflect.TypeOf(time.Time{})
 }
