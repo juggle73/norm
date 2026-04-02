@@ -56,6 +56,18 @@
 //	fk=Model     — foreign key (accepts CamelCase, camelCase, snake_case)
 //	-            — skip field entirely
 //
+// # Configuration
+//
+// [Config] controls default PostgreSQL types and JSON codec:
+//
+//	orm := norm.NewNorm(&norm.Config{
+//	    DefaultString: "varchar",      // default: "text"
+//	    DefaultTime:   "timestamp",    // default: "timestamptz"
+//	    DefaultJSON:   "json",         // default: "jsonb"
+//	    JSONMarshal:   sonic.Marshal,  // default: encoding/json
+//	    JSONUnmarshal: sonic.Unmarshal,
+//	})
+//
 // # Thread safety
 //
 // Struct metadata is cached and shared safely across goroutines.
