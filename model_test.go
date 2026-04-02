@@ -580,6 +580,164 @@ func TestInsert(t *testing.T) {
 	})
 }
 
+func TestUpdate(t *testing.T) {
+	n := NewNorm(nil)
+	user := &ModelTestStruct{Id: 1, Name: "Bob", Email: "bob@test.com", Age: 30}
+	m, _ := n.M(user)
+
+	t.Run("basic update with where", func(t *testing.T) {
+		sql, vals, err := m.Update(Exclude("id"), Where("id = ?", 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "UPDATE model_test_struct SET name=$1, email=$2, age=$3 WHERE id = $4"
+		if sql != want {
+			t.Errorf("got:\n  %q\nwant:\n  %q", sql, want)
+		}
+		if len(vals) != 4 || vals[0] != "Bob" || vals[1] != "bob@test.com" || vals[2] != 30 || vals[3] != 1 {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
+
+	t.Run("with fields filter", func(t *testing.T) {
+		sql, vals, err := m.Update(Fields("name,email"), Where("id = ?", 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "UPDATE model_test_struct SET name=$1, email=$2 WHERE id = $3"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 3 || vals[0] != "Bob" || vals[1] != "bob@test.com" || vals[2] != 1 {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
+
+	t.Run("with returning", func(t *testing.T) {
+		sql, vals, err := m.Update(Exclude("id"), Where("id = ?", 1), Returning("Id"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "UPDATE model_test_struct SET name=$1, email=$2, age=$3 WHERE id = $4 RETURNING id"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 4 {
+			t.Errorf("expected 4 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("without where", func(t *testing.T) {
+		sql, vals, err := m.Update(Exclude("id"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "UPDATE model_test_struct SET name=$1, email=$2, age=$3"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 3 {
+			t.Errorf("expected 3 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("no fields error", func(t *testing.T) {
+		_, _, err := m.Update(Fields("nonexistent"))
+		if err == nil {
+			t.Error("expected error when no fields to set")
+		}
+	})
+
+	t.Run("returning unknown field errors", func(t *testing.T) {
+		_, _, err := m.Update(Exclude("id"), Returning("nonexistent"))
+		if err == nil {
+			t.Error("expected error for unknown returning field")
+		}
+	})
+
+	t.Run("multiple where args", func(t *testing.T) {
+		sql, vals, err := m.Update(Fields("name"), Where("id = ? AND age > ?", 1, 18))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "UPDATE model_test_struct SET name=$1 WHERE id = $2 AND age > $3"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(vals) != 3 || vals[0] != "Bob" || vals[1] != 1 || vals[2] != 18 {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
+}
+
+func TestDelete(t *testing.T) {
+	n := NewNorm(nil)
+	m, _ := n.M(&ModelTestStruct{})
+
+	t.Run("basic delete with where", func(t *testing.T) {
+		sql, args, err := m.Delete(Where("id = ?", 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "DELETE FROM model_test_struct WHERE id = $1"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(args) != 1 || args[0] != 1 {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("without where", func(t *testing.T) {
+		sql, args, err := m.Delete()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "DELETE FROM model_test_struct"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(args) != 0 {
+			t.Errorf("expected no args, got %v", args)
+		}
+	})
+
+	t.Run("with returning", func(t *testing.T) {
+		sql, args, err := m.Delete(Where("id = ?", 1), Returning("Id"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "DELETE FROM model_test_struct WHERE id = $1 RETURNING id"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(args) != 1 || args[0] != 1 {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("multiple where args", func(t *testing.T) {
+		sql, args, err := m.Delete(Where("id = ? AND age > ?", 1, 18))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "DELETE FROM model_test_struct WHERE id = $1 AND age > $2"
+		if sql != want {
+			t.Errorf("got %q", sql)
+		}
+		if len(args) != 2 {
+			t.Errorf("expected 2 args, got %d", len(args))
+		}
+	})
+
+	t.Run("returning unknown field errors", func(t *testing.T) {
+		_, _, err := m.Delete(Returning("nonexistent"))
+		if err == nil {
+			t.Error("expected error for unknown returning field")
+		}
+	})
+}
+
 func TestEmbeddedStruct(t *testing.T) {
 	type BaseModel struct {
 		Id        int `norm:"pk"`
