@@ -196,18 +196,60 @@ err := pool.QueryRow(ctx, sql, vals...).Scan(m.Pointer("Id"))
 
 ### UPDATE
 
+Use `m.Update()` — builds SET clause from bound struct values, chains bind numbers into WHERE:
+
 ```go
 user := User{Id: 1, Name: "Bob", Email: "bob@new.com"}
 m, _ := orm.M(&user)
 
+sql, args, _ := m.Update(norm.Exclude("id"), norm.Where("id = ?", user.Id))
+// sql  = "UPDATE users SET name=$1, email=$2 WHERE id=$3"
+// args = ["Bob", "bob@new.com", 1]
+
+_, err := pool.Exec(ctx, sql, args...)
+```
+
+With RETURNING:
+
+```go
+sql, args, _ := m.Update(
+    norm.Exclude("id"),
+    norm.Where("id = ?", user.Id),
+    norm.Returning("Id"),
+)
+// → "UPDATE users SET name=$1, email=$2 WHERE id=$3 RETURNING id"
+```
+
+You can also build UPDATE manually with `UpdateFields` and `BuildWhere`:
+
+```go
 set, nextBind := m.UpdateFields(norm.Exclude("id"))
 whereStr, whereArgs := norm.BuildWhere(nextBind, "id = ?", user.Id)
 
 sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s", m.Table(), set, whereStr)
-// → "UPDATE users SET name=$1, email=$2 WHERE id=$3"
-
 args := append(m.Values(norm.Exclude("id")), whereArgs...)
 _, err := pool.Exec(ctx, sql, args...)
+```
+
+### DELETE
+
+Use `m.Delete()`:
+
+```go
+m, _ := orm.M(&User{})
+
+sql, args, _ := m.Delete(norm.Where("id = ?", 42))
+// sql  = "DELETE FROM users WHERE id=$1"
+// args = [42]
+
+_, err := pool.Exec(ctx, sql, args...)
+```
+
+With RETURNING:
+
+```go
+sql, args, _ := m.Delete(norm.Where("id = ?", 42), norm.Returning("Id"))
+// → "DELETE FROM users WHERE id=$1 RETURNING id"
 ```
 
 ### ORDER BY
@@ -389,12 +431,12 @@ for rows.Next() {
 | `Exclude("field1,field2")` | Exclude fields by db name | Fields, Binds, UpdateFields, Pointers, Values |
 | `Fields("field1,field2")` | Include only these fields | Fields, Binds, UpdateFields, Pointers, Values |
 | `Prefix("t.")` | Add table alias prefix | Fields |
-| `Returning("field1,field2")` | Fields for RETURNING clause | Insert |
+| `Returning("field1,field2")` | Fields for RETURNING clause | Insert, Update, Delete |
 | `Limit(n)` | LIMIT value | Select |
 | `Offset(n)` | OFFSET value | Select |
 | `Order("field [ASC\|DESC]")` | ORDER BY clause | Select |
 | `AddTargets(&var1, &var2)` | Extra scan targets | Pointers |
-| `Where("field = ?", val)` | WHERE with ? placeholders | ComposeOptions |
+| `Where("field = ?", val)` | WHERE with ? placeholders | Select, Update, Delete |
 
 ## Model methods reference
 
@@ -410,6 +452,8 @@ for rows.Next() {
 | `OrderBy(s)` | `string` | Validated ORDER BY clause |
 | `Select(opts...)` | `string, []any, error` | Full SELECT query + args |
 | `Insert(opts...)` | `string, []any, error` | Full INSERT query + values |
+| `Update(opts...)` | `string, []any, error` | Full UPDATE query + args |
+| `Delete(opts...)` | `string, []any, error` | Full DELETE query + args |
 | `Returning(fields)` | `string` | RETURNING clause |
 | `LimitOffset(limit, offset)` | `string` | LIMIT/OFFSET clause |
 | `BuildConditions(m, prefix)` | `[]string, []any` | WHERE conditions from map |

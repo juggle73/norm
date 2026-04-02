@@ -308,6 +308,90 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	return sql, vals, nil
 }
 
+// Update builds an UPDATE SQL string and returns combined args (SET values + WHERE args).
+// Supports: Exclude, Fields, Where, Returning.
+func (m *Model) Update(opts ...Option) (string, []any, error) {
+	co := ComposeOptions(opts...)
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	ff, _ := m.filteredFields(opts...)
+
+	if len(ff) == 0 {
+		return "", nil, errors.New("Update: no fields to set")
+	}
+
+	setCols := make([]string, 0, len(ff))
+	vals := make([]any, 0, len(ff))
+
+	for i, f := range ff {
+		setCols = append(setCols, fmt.Sprintf("%s=$%d", f.dbName, i+1))
+		vals = append(vals, m.val.FieldByName(f.name).Interface())
+	}
+
+	sql := fmt.Sprintf("UPDATE %s SET %s", m.table, strings.Join(setCols, ", "))
+
+	// WHERE
+	if co.Where != nil {
+		whereStr, _ := co.Where.Build(len(ff) + 1)
+		sql += " WHERE " + whereStr
+		vals = append(vals, co.Where.Args...)
+	}
+
+	// RETURNING
+	if len(co.Returning) > 0 {
+		ret := make([]string, 0, len(co.Returning))
+		for _, name := range co.Returning {
+			name = strings.TrimSpace(name)
+			field, ok := m.fieldByAnyName[name]
+			if !ok {
+				return "", nil, fmt.Errorf("Returning: unknown field %q", name)
+			}
+			ret = append(ret, field.dbName)
+		}
+		sql += " RETURNING " + strings.Join(ret, ", ")
+	}
+
+	return sql, vals, nil
+}
+
+// Delete builds a DELETE SQL string and returns WHERE args.
+// Supports: Where, Returning.
+func (m *Model) Delete(opts ...Option) (string, []any, error) {
+	co := ComposeOptions(opts...)
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	sql := fmt.Sprintf("DELETE FROM %s", m.table)
+
+	var args []any
+
+	// WHERE
+	if co.Where != nil {
+		whereStr, _ := co.Where.Build(1)
+		sql += " WHERE " + whereStr
+		args = append(args, co.Where.Args...)
+	}
+
+	// RETURNING
+	if len(co.Returning) > 0 {
+		ret := make([]string, 0, len(co.Returning))
+		for _, name := range co.Returning {
+			name = strings.TrimSpace(name)
+			field, ok := m.fieldByAnyName[name]
+			if !ok {
+				return "", nil, fmt.Errorf("Returning: unknown field %q", name)
+			}
+			ret = append(ret, field.dbName)
+		}
+		sql += " RETURNING " + strings.Join(ret, ", ")
+	}
+
+	return sql, args, nil
+}
+
 // orderBySQL validates and renders ORDER BY clause. Must be called under m.mut.RLock.
 func (m *modelMeta) orderBySQL(orderBy string) string {
 	parts := strings.Split(orderBy, ",")
