@@ -20,7 +20,6 @@ type modelMeta struct {
 
 	config *Config
 	pk     []string
-	unique []string
 }
 
 // Model binds cached metadata to a specific struct instance.
@@ -61,7 +60,6 @@ func (m *modelMeta) Parse(obj any, table string) error {
 	m.valType = val.Type()
 
 	m.pk = make([]string, 0)
-	m.unique = make([]string, 0)
 
 	m.parseFields(val.Type())
 
@@ -108,9 +106,6 @@ func (m *modelMeta) parseFields(t reflect.Type) {
 
 		if _, hasPk := tagValues["pk"]; hasPk {
 			m.pk = append(m.pk, field.dbName)
-		}
-		if _, hasUnique := tagValues["unique"]; hasUnique {
-			m.unique = append(m.unique, field.dbName)
 		}
 	}
 }
