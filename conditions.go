@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// operationMap maps condition operator names to SQL operators.
 var operationMap = map[string]string{
 	"gt":  ">",
 	"gte": ">=",
@@ -14,6 +15,8 @@ var operationMap = map[string]string{
 	"ne":  "!=",
 }
 
+// conditionBuilder accumulates WHERE conditions and bind values
+// while processing a single [BuildConditions] call.
 type conditionBuilder struct {
 	conditions []string
 	values     []any
@@ -22,15 +25,24 @@ type conditionBuilder struct {
 	prefix     string
 }
 
-// BuildConditions builds sql WHERE conditions and return them with bind values
+// BuildConditions builds SQL WHERE conditions from a map of field names
+// to filter values. Returns a slice of condition strings and a slice of
+// bind values.
 //
-// Parameters:
+// The prefix parameter adds a table alias to all field references (e.g. "u."
+// for JOINs). Map keys are field names (any format) or "field->>jsonKey"
+// for JSON field access.
 //
-//	prefix - prefix for field names, table alias, used when using joins in sql query
-//	obj.key - field name or [field name]->>[json key name] for json field types
-//	obj.value:
-//	  for string field type:
-//	    string - add [field]=[value] condition
+// Supported value types:
+//   - Direct value (string, int, float, bool): equality condition
+//   - map[string]any with operators: {"gt": 18, "lte": 65, "like": "%john%",
+//     "isNull": true}
+//   - []any: IN clause
+//
+//	conds, vals := m.BuildConditions(map[string]any{
+//	    "name": "John",
+//	    "age":  map[string]any{"gte": 18, "lt": 65},
+//	}, "")
 func (m *modelMeta) BuildConditions(obj map[string]any, prefix string) ([]string, []any) {
 
 	builder := conditionBuilder{
@@ -61,6 +73,7 @@ func (m *modelMeta) BuildConditions(obj map[string]any, prefix string) ([]string
 	return builder.conditions, builder.values
 }
 
+// getCondition dispatches to the appropriate type-specific condition builder.
 func (b *conditionBuilder) getCondition(val reflect.Value) {
 	var res []string
 
@@ -82,11 +95,8 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 		}
 	case reflect.Map:
 		if b.suffix != "" {
-			// TODO: add support for json field types
 			res = b.stringCondition(val)
 		}
-	default:
-
 	}
 
 	if len(res) > 0 {
@@ -94,6 +104,8 @@ func (b *conditionBuilder) getCondition(val reflect.Value) {
 	}
 }
 
+// stringCondition builds conditions for string-typed fields.
+// Supports equality, LIKE, IS NULL, and IN operators.
 func (b *conditionBuilder) stringCondition(val reflect.Value) []string {
 	res := make([]string, 0)
 
@@ -136,6 +148,8 @@ func (b *conditionBuilder) stringCondition(val reflect.Value) []string {
 	return res
 }
 
+// intCondition builds conditions for integer-typed fields (all int and uint sizes).
+// Supports equality, comparison operators (gt, gte, lt, lte, ne), IS NULL, and IN.
 func (b *conditionBuilder) intCondition(val reflect.Value) []string {
 	res := make([]string, 0)
 
@@ -189,6 +203,8 @@ func (b *conditionBuilder) intCondition(val reflect.Value) []string {
 	return res
 }
 
+// boolCondition builds conditions for boolean-typed fields.
+// Supports equality and IS NULL.
 func (b *conditionBuilder) boolCondition(val reflect.Value) []string {
 	res := make([]string, 0)
 
@@ -218,6 +234,8 @@ func (b *conditionBuilder) boolCondition(val reflect.Value) []string {
 	return res
 }
 
+// floatCondition builds conditions for float-typed fields (float32, float64).
+// Supports equality, comparison operators (gt, gte, lt, lte, ne), IS NULL, and IN.
 func (b *conditionBuilder) floatCondition(val reflect.Value) []string {
 	res := make([]string, 0)
 
@@ -271,6 +289,9 @@ func (b *conditionBuilder) floatCondition(val reflect.Value) []string {
 	return res
 }
 
+// timeCondition builds conditions for time.Time fields.
+// Time values are passed as strings. Supports equality, comparison operators
+// (gt, gte, lt, lte, ne), IS NULL, and IN.
 func (b *conditionBuilder) timeCondition(val reflect.Value) []string {
 	res := make([]string, 0)
 

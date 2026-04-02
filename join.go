@@ -21,9 +21,16 @@ type joinEntry struct {
 	on    string
 }
 
-// Join is a query builder for SELECT with JOINs.
-// Fields are auto-prefixed with table names. Pointers() collects scan targets
-// from all models in order.
+// Join is a fluent query builder for SELECT queries with JOINs.
+// Column names are automatically prefixed with table names to avoid
+// ambiguity. [Join.Pointers] collects scan targets from all joined models.
+//
+//	j := norm.NewJoin(mUser).
+//	    Inner(mOrder, "orders.user_id = users.id").
+//	    Where("users.active = ?", true).
+//	    Limit(10)
+//	sql, args, _ := j.Select()
+//	err := row.Scan(j.Pointers()...)
 type Join struct {
 	base    *Model
 	joins   []joinEntry
@@ -33,7 +40,7 @@ type Join struct {
 	offset  int
 }
 
-// NewJoin creates a new Join builder with the given base (FROM) model.
+// NewJoin creates a new [Join] builder with the given base (FROM) model.
 func NewJoin(base *Model) *Join {
 	return &Join{
 		base:  base,
@@ -41,50 +48,80 @@ func NewJoin(base *Model) *Join {
 	}
 }
 
-// Inner adds an INNER JOIN.
+// Inner adds an INNER JOIN with an explicit ON clause.
+//
+//	j.Inner(mOrder, "orders.user_id = users.id")
 func (j *Join) Inner(m *Model, on string) *Join {
 	j.joins = append(j.joins, joinEntry{innerJoin, m, on})
 	return j
 }
 
-// Left adds a LEFT JOIN.
+// Left adds a LEFT JOIN with an explicit ON clause.
+//
+//	j.Left(mOrder, "orders.user_id = users.id")
 func (j *Join) Left(m *Model, on string) *Join {
 	j.joins = append(j.joins, joinEntry{leftJoin, m, on})
 	return j
 }
 
-// Right adds a RIGHT JOIN.
+// Right adds a RIGHT JOIN with an explicit ON clause.
+//
+//	j.Right(mOrder, "orders.user_id = users.id")
 func (j *Join) Right(m *Model, on string) *Join {
 	j.joins = append(j.joins, joinEntry{rightJoin, m, on})
 	return j
 }
 
-// Where sets the WHERE clause with ? placeholders.
+// Auto adds an INNER JOIN with the ON clause resolved automatically from
+// fk struct tags. The FK relationship is searched in both directions.
+// Panics if no FK relationship is found or if the relationship is ambiguous
+// (multiple FKs to the same table) — use [Join.Inner] in those cases.
+//
+//	// Given: Order has `norm:"fk=User"` on UserId field
+//	j.Auto(mOrder) // → INNER JOIN orders ON orders.user_id = users.id
+func (j *Join) Auto(m *Model) *Join {
+	j.joins = append(j.joins, joinEntry{innerJoin, m, j.resolveFK(m)})
+	return j
+}
+
+// AutoLeft adds a LEFT JOIN with the ON clause resolved automatically from
+// fk struct tags. See [Join.Auto] for details on FK resolution.
+func (j *Join) AutoLeft(m *Model) *Join {
+	j.joins = append(j.joins, joinEntry{leftJoin, m, j.resolveFK(m)})
+	return j
+}
+
+// Where sets the WHERE clause with "?" placeholders for positional args.
+//
+//	j.Where("users.active = ? AND orders.total > ?", true, 100)
 func (j *Join) Where(where string, args ...any) *Join {
 	j.where = parseWhere(where, args...)
 	return j
 }
 
-// Order sets the ORDER BY clause (raw SQL, use table.column format).
+// Order sets the ORDER BY clause. Use raw SQL with table.column format.
+//
+//	j.Order("users.name DESC, orders.total ASC")
 func (j *Join) Order(orderBy string) *Join {
 	j.orderBy = orderBy
 	return j
 }
 
-// Limit sets the LIMIT value.
+// Limit sets the LIMIT value for the query.
 func (j *Join) Limit(limit int) *Join {
 	j.limit = limit
 	return j
 }
 
-// Offset sets the OFFSET value.
+// Offset sets the OFFSET value for the query.
 func (j *Join) Offset(offset int) *Join {
 	j.offset = offset
 	return j
 }
 
 // Select builds the full SELECT ... FROM ... JOIN ... query.
-// Returns SQL string, args, and error.
+// All column names are prefixed with their table names.
+// Returns the SQL string, positional arguments, and any error.
 func (j *Join) Select() (string, []any, error) {
 	allFields := j.collectFields(j.base)
 	for _, je := range j.joins {
@@ -119,7 +156,10 @@ func (j *Join) Select() (string, []any, error) {
 	return sql, args, nil
 }
 
-// Pointers returns scan targets from all models in order (base + joins).
+// Pointers returns scan targets from all models in order (base first,
+// then each joined model). Suitable for passing to rows.Scan().
+//
+//	err := row.Scan(j.Pointers()...)
 func (j *Join) Pointers() []any {
 	ptrs := j.base.Pointers()
 	for _, je := range j.joins {
@@ -128,22 +168,11 @@ func (j *Join) Pointers() []any {
 	return ptrs
 }
 
-// Auto adds an INNER JOIN with the ON clause resolved automatically from FK tags.
-// Panics if no FK relationship is found or if the relationship is ambiguous.
-func (j *Join) Auto(m *Model) *Join {
-	j.joins = append(j.joins, joinEntry{innerJoin, m, j.resolveFK(m)})
-	return j
-}
-
-// AutoLeft adds a LEFT JOIN with the ON clause resolved automatically from FK tags.
-// Panics if no FK relationship is found or if the relationship is ambiguous.
-func (j *Join) AutoLeft(m *Model) *Join {
-	j.joins = append(j.joins, joinEntry{leftJoin, m, j.resolveFK(m)})
-	return j
-}
-
-// resolveFK finds the FK relationship between m and existing models in the join.
-// Checks both directions: m referencing existing models, and existing models referencing m.
+// resolveFK finds the FK relationship between m and models already in the
+// join (base + previous joins). Checks both directions:
+//   - m has a field with fk tag pointing to an existing model
+//   - an existing model has a field with fk tag pointing to m
+//
 // Panics on no match, ambiguous match, or missing/composite PK.
 func (j *Join) resolveFK(m *Model) string {
 	existing := make([]*Model, 0, 1+len(j.joins))
@@ -204,7 +233,7 @@ func (j *Join) resolveFK(m *Model) string {
 	return matches[0]
 }
 
-// collectFields returns field names prefixed with table name.
+// collectFields returns field names prefixed with the model's table name.
 func (j *Join) collectFields(m *Model) []string {
 	m.mut.RLock()
 	defer m.mut.RUnlock()

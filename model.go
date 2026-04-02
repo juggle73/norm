@@ -10,7 +10,9 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-// modelMeta caches struct reflection metadata. Thread-safe for concurrent reads.
+// modelMeta caches struct reflection metadata (field names, types, tags).
+// It is created once per struct type and shared across all [Model] instances.
+// Thread-safe for concurrent reads.
 type modelMeta struct {
 	table          string
 	valType        reflect.Type
@@ -22,21 +24,27 @@ type modelMeta struct {
 	pk     []string
 }
 
-// Model binds cached metadata to a specific struct instance.
-// Not safe for concurrent use.
+// Model binds cached metadata to a specific struct instance. It provides
+// methods for building SQL queries and extracting values/pointers from
+// the bound struct.
+//
+// Model is not safe for concurrent use. Each goroutine should obtain its
+// own Model via [Norm.M].
 type Model struct {
 	*modelMeta
 	val reflect.Value
 }
 
-// newModelMeta creates a new modelMeta instance
+// newModelMeta creates a new modelMeta instance with the given config.
 func newModelMeta(config *Config) *modelMeta {
 	return &modelMeta{
 		config: config,
 	}
 }
 
-// Parse parses an obj struct fields and save it to modelMeta
+// Parse extracts field metadata from obj and stores it in the modelMeta.
+// obj must be a struct or pointer to struct. If table is empty, the table
+// name is derived from the struct name in snake_case.
 func (m *modelMeta) Parse(obj any, table string) error {
 	val := reflect.Indirect(reflect.ValueOf(obj))
 	if val.Kind() != reflect.Struct {
@@ -66,7 +74,7 @@ func (m *modelMeta) Parse(obj any, table string) error {
 	return nil
 }
 
-// parseFields recursively parses struct fields, including embedded structs
+// parseFields recursively parses struct fields, including embedded structs.
 func (m *modelMeta) parseFields(t reflect.Type) {
 	c := t.NumField()
 	for i := 0; i < c; i++ {
@@ -110,7 +118,7 @@ func (m *modelMeta) parseFields(t reflect.Type) {
 	}
 }
 
-// filteredFields returns fields filtered by options and the composed options.
+// filteredFields returns fields filtered by Exclude/Fields options.
 // Must be called under m.mut.RLock.
 func (m *modelMeta) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 	co := ComposeOptions(opts...)
@@ -129,8 +137,12 @@ func (m *modelMeta) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 	return res, co
 }
 
-// Fields returns slice of fields database names with prefix in snake-case, excluding
-// specified in the parameter exclude
+// Fields returns a comma-separated list of column names in snake_case.
+// Supports [Exclude], [Fields], and [Prefix] options.
+//
+//	m.Fields()                          // "id, name, email"
+//	m.Fields(norm.Exclude("id"))        // "name, email"
+//	m.Fields(norm.Prefix("u."))         // "u.id, u.name, u.email"
 func (m *modelMeta) Fields(opts ...Option) string {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
@@ -145,9 +157,11 @@ func (m *modelMeta) Fields(opts ...Option) string {
 	return strings.Join(res, ", ")
 }
 
-// UpdateFields returns comma separated fields database names in snake-case
-// in "<field db name>=$<bind num>" format, excluding specified in the parameter exclude,
-// and next bind number
+// UpdateFields returns a SET clause string ("name=$1, email=$2") and the
+// next bind parameter number. Supports [Exclude] and [Fields] options.
+//
+//	set, nextBind := m.UpdateFields(norm.Exclude("id"))
+//	// set = "name=$1, email=$2", nextBind = 3
 func (m *modelMeta) UpdateFields(opts ...Option) (string, int) {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
@@ -162,8 +176,11 @@ func (m *modelMeta) UpdateFields(opts ...Option) (string, int) {
 	return strings.Join(res, ", "), len(ff) + 1
 }
 
-// Binds returns comma separated binds in format $<bind no.> for count of fields, excluding
-// specified in the parameter exclude
+// Binds returns a comma-separated list of bind placeholders ($1, $2, ...).
+// Supports [Exclude] and [Fields] options.
+//
+//	m.Binds()                    // "$1, $2, $3"
+//	m.Binds(norm.Exclude("id")) // "$1, $2"
 func (m *modelMeta) Binds(opts ...Option) string {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
@@ -178,7 +195,13 @@ func (m *modelMeta) Binds(opts ...Option) string {
 	return strings.Join(res, ", ")
 }
 
-// Pointers returns slice of field pointers for the bound struct instance.
+// Pointers returns a slice of pointers to the bound struct's fields,
+// suitable for passing to rows.Scan(). Struct fields (except time.Time)
+// are wrapped in a JSON scanner automatically.
+// Supports [Exclude], [Fields], and [AddTargets] options.
+//
+//	err := row.Scan(m.Pointers()...)
+//	err := row.Scan(m.Pointers(norm.AddTargets(&totalCount))...)
 func (m *Model) Pointers(opts ...Option) []any {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
@@ -202,12 +225,19 @@ func (m *Model) Pointers(opts ...Option) []any {
 	return res
 }
 
-// Pointer returns a pointer to the named field of the bound struct instance.
+// Pointer returns a pointer to a single named field of the bound struct.
+// Panics if the field name is not found — this is a programmer error.
+//
+//	err := row.Scan(m.Pointer("Id"))
 func (m *Model) Pointer(name string) any {
 	return m.val.FieldByName(name).Addr().Interface()
 }
 
-// Values returns slice of field values for the bound struct instance.
+// Values returns a slice of field values from the bound struct instance.
+// Struct fields (except time.Time) are marshaled to JSON bytes automatically.
+// Supports [Exclude] and [Fields] options.
+//
+//	_, err := pool.Exec(ctx, sql, m.Values(norm.Exclude("id"))...)
 func (m *Model) Values(opts ...Option) []any {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
@@ -231,8 +261,16 @@ func (m *Model) Values(opts ...Option) []any {
 	return res
 }
 
-// Select builds a SELECT SQL string from options.
-// Supports: Exclude, Fields, Prefix, Where, Order, Limit, Offset.
+// Select builds a full SELECT query from the bound model.
+// Returns the SQL string, positional arguments, and any error.
+// Supports [Exclude], [Fields], [Prefix], [Where], [Order], [Limit], [Offset] options.
+//
+//	sql, args, _ := m.Select(
+//	    norm.Where("active = ?", true),
+//	    norm.Order("Name DESC"),
+//	    norm.Limit(10),
+//	)
+//	// "SELECT id, name, email FROM users WHERE active=$1 ORDER BY name DESC LIMIT 10"
 func (m *Model) Select(opts ...Option) (string, []any, error) {
 	co := ComposeOptions(opts...)
 
@@ -241,7 +279,6 @@ func (m *Model) Select(opts ...Option) (string, []any, error) {
 
 	ff, _ := m.filteredFields(opts...)
 
-	// SELECT columns
 	cols := make([]string, 0, len(ff))
 	for _, f := range ff {
 		cols = append(cols, co.Prefix+f.dbName)
@@ -251,19 +288,16 @@ func (m *Model) Select(opts ...Option) (string, []any, error) {
 
 	var args []any
 
-	// WHERE
 	if co.Where != nil {
 		whereStr, _ := co.Where.Build(1)
 		sql += " WHERE " + whereStr
 		args = append(args, co.Where.Args...)
 	}
 
-	// ORDER BY
 	if co.OrderBy != "" {
 		sql += " ORDER BY " + m.orderBySQL(co.OrderBy)
 	}
 
-	// LIMIT / OFFSET
 	if co.Limit > 0 {
 		sql += fmt.Sprintf(" LIMIT %d", co.Limit)
 	}
@@ -274,8 +308,12 @@ func (m *Model) Select(opts ...Option) (string, []any, error) {
 	return sql, args, nil
 }
 
-// Insert builds an INSERT SQL string and returns values from the bound struct.
-// Supports: Exclude, Fields, Returning.
+// Insert builds a full INSERT query and returns the SQL string and values
+// from the bound struct. Struct fields are automatically JSON-marshaled.
+// Supports [Exclude], [Fields], and [Returning] options.
+//
+//	sql, vals, _ := m.Insert(norm.Exclude("id"), norm.Returning("Id"))
+//	// "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id"
 func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	co := ComposeOptions(opts...)
 
@@ -318,8 +356,14 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	return sql, vals, nil
 }
 
-// Update builds an UPDATE SQL string and returns combined args (SET values + WHERE args).
-// Supports: Exclude, Fields, Where, Returning.
+// Update builds a full UPDATE query and returns the SQL string and combined
+// args (SET values followed by WHERE args). Struct fields are automatically
+// JSON-marshaled. Bind numbering is chained: SET uses $1..$N, WHERE
+// continues from $N+1.
+// Supports [Exclude], [Fields], [Where], and [Returning] options.
+//
+//	sql, args, _ := m.Update(norm.Exclude("id"), norm.Where("id = ?", user.Id))
+//	// "UPDATE users SET name=$1, email=$2 WHERE id=$3"
 func (m *Model) Update(opts ...Option) (string, []any, error) {
 	co := ComposeOptions(opts...)
 
@@ -351,7 +395,6 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 
 	sql := fmt.Sprintf("UPDATE %s SET %s", m.table, strings.Join(setCols, ", "))
 
-	// WHERE
 	if co.Where != nil {
 		whereStr, _ := co.Where.Build(len(ff) + 1)
 		sql += " WHERE " + whereStr
@@ -367,8 +410,11 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 	return sql, vals, nil
 }
 
-// Delete builds a DELETE SQL string and returns WHERE args.
-// Supports: Where, Returning.
+// Delete builds a full DELETE query and returns the SQL string and WHERE args.
+// Supports [Where] and [Returning] options.
+//
+//	sql, args, _ := m.Delete(norm.Where("id = ?", 42))
+//	// "DELETE FROM users WHERE id=$1"
 func (m *Model) Delete(opts ...Option) (string, []any, error) {
 	co := ComposeOptions(opts...)
 
@@ -379,7 +425,6 @@ func (m *Model) Delete(opts ...Option) (string, []any, error) {
 
 	var args []any
 
-	// WHERE
 	if co.Where != nil {
 		whereStr, _ := co.Where.Build(1)
 		sql += " WHERE " + whereStr
@@ -395,8 +440,8 @@ func (m *Model) Delete(opts ...Option) (string, []any, error) {
 	return sql, args, nil
 }
 
-// returningSQL builds a RETURNING clause from composed options. Must be called under m.mut.RLock.
-// Returns the clause string (including " RETURNING " prefix) and error.
+// returningSQL builds a RETURNING clause from field names.
+// Must be called under m.mut.RLock.
 func (m *modelMeta) returningSQL(returning []string) (string, error) {
 	if len(returning) == 0 {
 		return "", nil
@@ -413,7 +458,8 @@ func (m *modelMeta) returningSQL(returning []string) (string, error) {
 	return " RETURNING " + strings.Join(ret, ", "), nil
 }
 
-// orderBySQL validates and renders ORDER BY clause. Must be called under m.mut.RLock.
+// orderBySQL validates and renders an ORDER BY clause.
+// Must be called under m.mut.RLock.
 func (m *modelMeta) orderBySQL(orderBy string) string {
 	parts := strings.Split(orderBy, ",")
 	res := make([]string, 0, len(parts))
@@ -448,17 +494,21 @@ func (m *modelMeta) orderBySQL(orderBy string) string {
 	return strings.Join(res, ", ")
 }
 
-// NewInstance creates and returns new instance of struct
+// NewInstance creates and returns a new zero-value pointer to the struct type
+// that this model represents.
+//
+//	inst := m.NewInstance() // returns *User (zero value)
 func (m *modelMeta) NewInstance() any {
 	return reflect.New(m.valType).Interface()
 }
 
-// Table returns model database table name
+// Table returns the database table name for this model.
 func (m *modelMeta) Table() string {
 	return m.table
 }
 
-// FieldByName trying to find field by name and returns the *Field or error
+// FieldByName looks up a field by any name format (struct name, camelCase,
+// or snake_case db name). Returns the [Field] and true if found.
 func (m *modelMeta) FieldByName(name string) (*Field, bool) {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
@@ -467,10 +517,14 @@ func (m *modelMeta) FieldByName(name string) (*Field, bool) {
 	return v, ok
 }
 
-// Returning validates field names and returns a RETURNING clause string.
-// Fields is a comma-separated list of field names (struct name, camelCase, or db name).
+// Returning validates field names and returns a RETURNING clause string
+// (e.g. "RETURNING id, name"). Fields is a comma-separated list of field
+// names in any format (struct name, camelCase, or db name).
 // Returns empty string if fields is empty.
-// Panics if a field is not found in the model.
+// Panics if a field is not found — this is a programmer error.
+//
+//	m.Returning("Id")          // "RETURNING id"
+//	m.Returning("Id, Email")   // "RETURNING id, email"
 func (m *modelMeta) Returning(fields string) string {
 	fields = strings.TrimSpace(fields)
 	if fields == "" {
@@ -501,8 +555,10 @@ func (m *modelMeta) Returning(fields string) string {
 	return "RETURNING " + strings.Join(res, ", ")
 }
 
-// LimitOffset returns a LIMIT/OFFSET clause string.
-// Pass 0 to omit either clause.
+// LimitOffset returns a LIMIT/OFFSET clause string. Pass 0 to omit either part.
+//
+//	m.LimitOffset(10, 0)   // "LIMIT 10"
+//	m.LimitOffset(10, 20)  // "LIMIT 10 OFFSET 20"
 func (m *modelMeta) LimitOffset(limit, offset int) string {
 	var parts []string
 	if limit > 0 {
@@ -515,17 +571,22 @@ func (m *modelMeta) LimitOffset(limit, offset int) string {
 	return strings.Join(parts, " ")
 }
 
-// FieldDescriptions returns the slice of *Field containing all model fields
+// FieldDescriptions returns the slice of all [Field] descriptors for this model.
 func (m *modelMeta) FieldDescriptions() []*Field {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 	return m.fields
 }
 
-// OrderBy parses and validates an order by clause string.
-// Each entry must be "fieldName [ASC|DESC]". Field names are validated
-// against the model and converted to database column names.
-// Panics if a field is not found or direction is invalid.
+// OrderBy validates and renders an ORDER BY clause string. Field names are
+// validated against the model and converted to database column names.
+// Accepts any name format (struct name, camelCase, snake_case).
+// Direction defaults to ASC if omitted.
+// Panics if a field is not found or direction is invalid — these are
+// programmer errors.
+//
+//	m.OrderBy("Name DESC")          // "name DESC"
+//	m.OrderBy("Name ASC, Email")    // "name ASC, email ASC"
 func (m *modelMeta) OrderBy(orderBy string) string {
 	orderBy = strings.TrimSpace(orderBy)
 	if orderBy == "" {
