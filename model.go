@@ -222,6 +222,127 @@ func (m *Model) Values(opts ...Option) []any {
 	return res
 }
 
+// Select builds a SELECT SQL string from options.
+// Supports: Exclude, Fields, Prefix, Where, Order, Limit, Offset.
+func (m *Model) Select(opts ...Option) (string, []any, error) {
+	co := ComposeOptions(opts...)
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	ff, _ := m.filteredFields(opts...)
+
+	// SELECT columns
+	cols := make([]string, 0, len(ff))
+	for _, f := range ff {
+		cols = append(cols, co.Prefix+f.dbName)
+	}
+
+	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), m.table)
+
+	var args []any
+
+	// WHERE
+	if co.Where != nil {
+		whereStr, _ := co.Where.Build(1)
+		sql += " WHERE " + whereStr
+		args = append(args, co.Where.Args...)
+	}
+
+	// ORDER BY
+	if co.OrderBy != "" {
+		sql += " ORDER BY " + m.orderBySQL(co.OrderBy)
+	}
+
+	// LIMIT / OFFSET
+	if co.Limit > 0 {
+		sql += fmt.Sprintf(" LIMIT %d", co.Limit)
+	}
+	if co.Offset > 0 {
+		sql += fmt.Sprintf(" OFFSET %d", co.Offset)
+	}
+
+	return sql, args, nil
+}
+
+// Insert builds an INSERT SQL string and returns values from the bound struct.
+// Supports: Exclude, Fields, Returning.
+func (m *Model) Insert(opts ...Option) (string, []any, error) {
+	co := ComposeOptions(opts...)
+
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
+	ff, _ := m.filteredFields(opts...)
+
+	cols := make([]string, 0, len(ff))
+	binds := make([]string, 0, len(ff))
+	vals := make([]any, 0, len(ff))
+
+	for i, f := range ff {
+		cols = append(cols, f.dbName)
+		binds = append(binds, fmt.Sprintf("$%d", i+1))
+		vals = append(vals, m.val.FieldByName(f.name).Interface())
+	}
+
+	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		m.table,
+		strings.Join(cols, ", "),
+		strings.Join(binds, ", "),
+	)
+
+	// RETURNING
+	if len(co.Returning) > 0 {
+		ret := make([]string, 0, len(co.Returning))
+		for _, name := range co.Returning {
+			name = strings.TrimSpace(name)
+			field, ok := m.fieldByAnyName[name]
+			if !ok {
+				return "", nil, fmt.Errorf("Returning: unknown field %q", name)
+			}
+			ret = append(ret, field.dbName)
+		}
+		sql += " RETURNING " + strings.Join(ret, ", ")
+	}
+
+	return sql, vals, nil
+}
+
+// orderBySQL validates and renders ORDER BY clause. Must be called under m.mut.RLock.
+func (m *modelMeta) orderBySQL(orderBy string) string {
+	parts := strings.Split(orderBy, ",")
+	res := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		tokens := strings.Fields(strings.TrimSpace(part))
+		if len(tokens) == 0 {
+			continue
+		}
+
+		fieldName := tokens[0]
+		direction := "ASC"
+
+		if len(tokens) == 2 {
+			direction = strings.ToUpper(tokens[1])
+		} else if len(tokens) > 2 {
+			panic(fmt.Sprintf("OrderBy: invalid format %q", part))
+		}
+
+		if direction != "ASC" && direction != "DESC" {
+			panic(fmt.Sprintf("OrderBy: invalid direction %q, must be ASC or DESC", direction))
+		}
+
+		field, ok := m.fieldByAnyName[fieldName]
+		if !ok {
+			panic(fmt.Sprintf("OrderBy: unknown field %q", fieldName))
+		}
+
+		res = append(res, field.dbName+" "+direction)
+	}
+
+	return strings.Join(res, ", ")
+}
+
 // NewInstance creates and returns new instance of struct
 func (m *modelMeta) NewInstance() any {
 	return reflect.New(m.valType).Interface()
@@ -309,35 +430,5 @@ func (m *modelMeta) OrderBy(orderBy string) string {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
-	parts := strings.Split(orderBy, ",")
-	res := make([]string, 0, len(parts))
-
-	for _, part := range parts {
-		tokens := strings.Fields(strings.TrimSpace(part))
-		if len(tokens) == 0 {
-			continue
-		}
-
-		fieldName := tokens[0]
-		direction := "ASC"
-
-		if len(tokens) == 2 {
-			direction = strings.ToUpper(tokens[1])
-		} else if len(tokens) > 2 {
-			panic(fmt.Sprintf("OrderBy: invalid format %q", part))
-		}
-
-		if direction != "ASC" && direction != "DESC" {
-			panic(fmt.Sprintf("OrderBy: invalid direction %q, must be ASC or DESC", direction))
-		}
-
-		field, ok := m.fieldByAnyName[fieldName]
-		if !ok {
-			panic(fmt.Sprintf("OrderBy: unknown field %q", fieldName))
-		}
-
-		res = append(res, field.dbName+" "+direction)
-	}
-
-	return strings.Join(res, ", ")
+	return m.orderBySQL(orderBy)
 }
