@@ -275,16 +275,15 @@ func (m *modelMeta) Returning(fields string) string {
 	return "RETURNING " + strings.Join(res, ", ")
 }
 
-// LimitOffset returns a LIMIT/OFFSET clause string from options.
-func (m *modelMeta) LimitOffset(opts ...Option) string {
-	co := ComposeOptions(opts...)
-
+// LimitOffset returns a LIMIT/OFFSET clause string.
+// Pass 0 to omit either clause.
+func (m *modelMeta) LimitOffset(limit, offset int) string {
 	var parts []string
-	if co.Limit > 0 {
-		parts = append(parts, fmt.Sprintf("LIMIT %d", co.Limit))
+	if limit > 0 {
+		parts = append(parts, fmt.Sprintf("LIMIT %d", limit))
 	}
-	if co.Offset > 0 {
-		parts = append(parts, fmt.Sprintf("OFFSET %d", co.Offset))
+	if offset > 0 {
+		parts = append(parts, fmt.Sprintf("OFFSET %d", offset))
 	}
 
 	return strings.Join(parts, " ")
