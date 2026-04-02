@@ -15,40 +15,48 @@ package main
 
 import (
     "context"
-    "fmt"
 
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/juggle73/norm/v3"
 )
 
 type User struct {
-    Id    int64  `json:"id"`
-    Name  string `json:"name"`
-    Email string `json:"email"`
+    Id    int64  `norm:"pk"`
+    Name  string
+    Email string
 }
 
 func main() {
-    pool, _ := pgxpool.New(context.Background(), "postgres://localhost/mydb")
+    ctx := context.Background()
+    pool, _ := pgxpool.New(ctx, "postgres://localhost/mydb")
 
     orm := norm.NewNorm(nil)
 
     // SELECT
     user := User{}
     m, _ := orm.M(&user)
-    sql := fmt.Sprintf("SELECT %s FROM %s WHERE id=$1", m.Fields(), m.Table())
-
-    _ = pool.QueryRow(context.Background(), sql, 42).Scan(m.Pointers()...)
-    fmt.Println(user) // user is populated
+    sql, args, _ := m.Select(norm.Where("id = ?", 42))
+    // → "SELECT id, name, email FROM user WHERE id=$1"
+    _ = pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
 
     // INSERT
     newUser := User{Name: "Alice", Email: "alice@example.com"}
     m, _ = orm.M(&newUser)
-    sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-        m.Table(),
-        m.Fields(norm.Exclude("id")),
-        m.Binds(norm.Exclude("id")),
-    )
-    _, _ = pool.Exec(context.Background(), sql, m.Values(norm.Exclude("id"))...)
+    sql, vals, _ := m.Insert(norm.Exclude("id"), norm.Returning("Id"))
+    // → "INSERT INTO user (name, email) VALUES ($1, $2) RETURNING id"
+    _ = pool.QueryRow(ctx, sql, vals...).Scan(m.Pointer("Id"))
+
+    // UPDATE
+    user.Name = "Bob"
+    m, _ = orm.M(&user)
+    sql, args, _ = m.Update(norm.Exclude("id"), norm.Where("id = ?", user.Id))
+    // → "UPDATE user SET name=$1, email=$2 WHERE id=$3"
+    _, _ = pool.Exec(ctx, sql, args...)
+
+    // DELETE
+    sql, args, _ = m.Delete(norm.Where("id = ?", user.Id))
+    // → "DELETE FROM user WHERE id=$1"
+    _, _ = pool.Exec(ctx, sql, args...)
 }
 ```
 
