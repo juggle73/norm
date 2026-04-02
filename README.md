@@ -110,6 +110,31 @@ orm.AddModel(&User{}, "app_users") // table name = "app_users"
 
 Without `AddModel`, `M()` auto-generates the table name from the struct name in snake_case (`User` -> `user`, `UserProfile` -> `user_profile`).
 
+## Field and table naming
+
+**All names are automatically converted to snake_case.** This applies to both table names and column names:
+
+- Struct `UserProfile` → table `user_profile`
+- Field `UserName` → column `user_name`
+- Field `CreatedAt` → column `created_at`
+
+If your database uses a different naming convention, use `dbName` tag to override:
+
+```go
+type User struct {
+    UserName string                     // → column "user_name"
+    UserName string `norm:"dbName=username"` // → column "username"
+}
+```
+
+Table names can be overridden with `AddModel`:
+
+```go
+orm.AddModel(&User{}, "app_users") // table "app_users" instead of "user"
+```
+
+**Important:** norm will not match fields to columns automatically if they don't follow snake_case convention. If your column is `username` but your field is `UserName` (which maps to `user_name`), you must add `norm:"dbName=username"`.
+
 ## Struct tags
 
 Fields are configured via the `norm` struct tag:
