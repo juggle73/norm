@@ -333,29 +333,29 @@ func TestReturning(t *testing.T) {
 func TestLimitOffset(t *testing.T) {
 	m := newTestModel()
 
-	t.Run("no options", func(t *testing.T) {
-		got := m.LimitOffset()
+	t.Run("zeros", func(t *testing.T) {
+		got := m.LimitOffset(0, 0)
 		if got != "" {
 			t.Errorf("expected empty, got %q", got)
 		}
 	})
 
 	t.Run("limit only", func(t *testing.T) {
-		got := m.LimitOffset(Limit(10))
+		got := m.LimitOffset(10, 0)
 		if got != "LIMIT 10" {
 			t.Errorf("got %q", got)
 		}
 	})
 
 	t.Run("offset only", func(t *testing.T) {
-		got := m.LimitOffset(Offset(5))
+		got := m.LimitOffset(0, 5)
 		if got != "OFFSET 5" {
 			t.Errorf("got %q", got)
 		}
 	})
 
 	t.Run("both", func(t *testing.T) {
-		got := m.LimitOffset(Limit(10), Offset(20))
+		got := m.LimitOffset(10, 20)
 		if got != "LIMIT 10 OFFSET 20" {
 			t.Errorf("got %q", got)
 		}

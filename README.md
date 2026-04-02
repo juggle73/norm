@@ -224,7 +224,7 @@ Accepts field names in any format (struct name, camelCase, snake_case). Directio
 ```go
 sql := fmt.Sprintf("SELECT %s FROM %s %s",
     m.Fields(), m.Table(),
-    m.LimitOffset(norm.Limit(10), norm.Offset(20)),
+    m.LimitOffset(10, 20),
 )
 // → "SELECT id, name, email FROM users LIMIT 10 OFFSET 20"
 ```
@@ -385,8 +385,8 @@ for rows.Next() {
 | `Fields("field1,field2")` | Include only these fields | Fields, Binds, UpdateFields, Pointers, Values |
 | `Prefix("t.")` | Add table alias prefix | Fields |
 | `Returning("field1,field2")` | Fields for RETURNING clause | *(standalone option, see below)* |
-| `Limit(n)` | LIMIT value | LimitOffset |
-| `Offset(n)` | OFFSET value | LimitOffset |
+| `Limit(n)` | LIMIT value | ComposeOptions |
+| `Offset(n)` | OFFSET value | ComposeOptions |
 | `AddTargets(&var1, &var2)` | Extra scan targets | Pointers |
 | `Where("field = ?", val)` | WHERE with ? placeholders | ComposeOptions |
 
@@ -403,7 +403,7 @@ for rows.Next() {
 | `Table()` | `string` | Table name |
 | `OrderBy(s)` | `string` | Validated ORDER BY clause |
 | `Returning(fields)` | `string` | RETURNING clause |
-| `LimitOffset(opts...)` | `string` | LIMIT/OFFSET clause |
+| `LimitOffset(limit, offset)` | `string` | LIMIT/OFFSET clause |
 | `BuildConditions(m, prefix)` | `[]string, []any` | WHERE conditions from map |
 | `CreateTableSQL()` | `string` | CREATE TABLE statement |
 | `Migrate(existing)` | `[]string` | ALTER TABLE statements |
