@@ -491,15 +491,22 @@ conds, vals := m.BuildConditions(map[string]any{
 Generate Go structs from an existing database schema. Code generation lives in a separate subpackage:
 
 ```go
-import "github.com/juggle73/norm/v3/gen"
+import (
+    "database/sql"
+    "github.com/juggle73/norm/v3/gen"
+    _ "github.com/lib/pq" // or pgx/stdlib, etc.
+)
 
-results, err := gen.FromDB(ctx, pool, "models", "public")
+db, _ := sql.Open("postgres", "postgres://localhost/mydb")
+results, err := gen.FromDB(ctx, db, "models", "public")
 // results is map[tableName]string with generated Go source code
 
 for tableName, source := range results {
     os.WriteFile(tableName+".go", []byte(source), 0644)
 }
 ```
+
+`FromDB` accepts `*sql.DB` — any PostgreSQL driver works (lib/pq, pgx/stdlib, etc.).
 
 Generated structs include norm tags (`pk`, `notnull`, `unique`, `fk=...`) detected from database constraints.
 

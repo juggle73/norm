@@ -10,11 +10,11 @@ package gen
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/iancoleman/strcase"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Col describes a database column for code generation.
@@ -157,8 +157,9 @@ func buildNormTags(col Col) string {
 }
 
 // FromDB generates Go struct source code for all tables in the given schema.
-func FromDB(ctx context.Context, pool *pgxpool.Pool, packageName, schemaName string) (map[string]string, error) {
-	rows, err := pool.Query(ctx,
+// It accepts *sql.DB — any PostgreSQL driver works (pgx/stdlib, lib/pq, etc.).
+func FromDB(ctx context.Context, db *sql.DB, packageName, schemaName string) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx,
 		"SELECT tablename FROM pg_tables WHERE schemaname=$1", schemaName)
 	if err != nil {
 		return nil, fmt.Errorf("query tables: %w", err)
@@ -174,7 +175,7 @@ func FromDB(ctx context.Context, pool *pgxpool.Pool, packageName, schemaName str
 			return nil, fmt.Errorf("scan table name: %w", err)
 		}
 
-		cols, err := queryColumns(ctx, pool, tableName)
+		cols, err := queryColumns(ctx, db, tableName)
 		if err != nil {
 			return nil, err
 		}
@@ -186,9 +187,9 @@ func FromDB(ctx context.Context, pool *pgxpool.Pool, packageName, schemaName str
 }
 
 // queryColumns fetches column metadata, PK, unique, and FK info for a table.
-func queryColumns(ctx context.Context, pool *pgxpool.Pool, tableName string) ([]Col, error) {
+func queryColumns(ctx context.Context, db *sql.DB, tableName string) ([]Col, error) {
 	// Columns
-	colRows, err := pool.Query(ctx,
+	colRows, err := db.QueryContext(ctx,
 		`SELECT column_name, is_nullable, data_type
 		 FROM information_schema.columns
 		 WHERE table_name=$1
@@ -212,19 +213,19 @@ func queryColumns(ctx context.Context, pool *pgxpool.Pool, tableName string) ([]
 	}
 
 	// Primary keys
-	pkSet, err := queryConstraintColumns(ctx, pool, tableName, "PRIMARY KEY")
+	pkSet, err := queryConstraintColumns(ctx, db, tableName, "PRIMARY KEY")
 	if err != nil {
 		return nil, err
 	}
 
 	// Unique constraints
-	uniqueSet, err := queryConstraintColumns(ctx, pool, tableName, "UNIQUE")
+	uniqueSet, err := queryConstraintColumns(ctx, db, tableName, "UNIQUE")
 	if err != nil {
 		return nil, err
 	}
 
 	// Foreign keys
-	fkMap, err := queryForeignKeys(ctx, pool, tableName)
+	fkMap, err := queryForeignKeys(ctx, db, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -246,8 +247,8 @@ func queryColumns(ctx context.Context, pool *pgxpool.Pool, tableName string) ([]
 }
 
 // queryConstraintColumns returns a set of column names for the given constraint type.
-func queryConstraintColumns(ctx context.Context, pool *pgxpool.Pool, tableName, constraintType string) (map[string]bool, error) {
-	rows, err := pool.Query(ctx,
+func queryConstraintColumns(ctx context.Context, db *sql.DB, tableName, constraintType string) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx,
 		`SELECT kcu.column_name
 		 FROM information_schema.table_constraints tc
 		 JOIN information_schema.key_column_usage kcu
@@ -272,8 +273,8 @@ func queryConstraintColumns(ctx context.Context, pool *pgxpool.Pool, tableName, 
 }
 
 // queryForeignKeys returns a map of column_name → referenced_table_name.
-func queryForeignKeys(ctx context.Context, pool *pgxpool.Pool, tableName string) (map[string]string, error) {
-	rows, err := pool.Query(ctx,
+func queryForeignKeys(ctx context.Context, db *sql.DB, tableName string) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx,
 		`SELECT kcu.column_name, ccu.table_name
 		 FROM information_schema.table_constraints tc
 		 JOIN information_schema.key_column_usage kcu
