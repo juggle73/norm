@@ -557,6 +557,43 @@ Generated structs include norm tags (`pk`, `notnull`, `unique`, `fk=...`) detect
 | `Select()` | `string, []any, error` | Build SELECT query |
 | `Pointers()` | `[]any` | Scan targets from all models |
 
+## Benchmarks
+
+SQL generation speed compared to popular query builders. Pure query building, no database involved.
+
+**Apple M1 Max, Go 1.23**
+
+### SELECT
+
+| Library | ns/op | B/op | allocs/op | vs norm |
+|---------|------:|-----:|----------:|--------:|
+| **norm** | **437** | **376** | **12** | **1.0x** |
+| squirrel | 2749 | 3025 | 55 | 6.3x slower |
+| goqu | 2152 | 3368 | 78 | 4.9x slower |
+
+### INSERT
+
+| Library | ns/op | B/op | allocs/op | vs norm |
+|---------|------:|-----:|----------:|--------:|
+| **norm** | **740** | **416** | **18** | **1.0x** |
+| squirrel | 2416 | 2425 | 53 | 3.3x slower |
+| goqu | 1738 | 2256 | 76 | 2.3x slower |
+
+### UPDATE
+
+| Library | ns/op | B/op | allocs/op | vs norm |
+|---------|------:|-----:|----------:|--------:|
+| **norm** | **911** | **608** | **23** | **1.0x** |
+| squirrel | 3839 | 4138 | 81 | 4.2x slower |
+| goqu | 2754 | 3404 | 104 | 3.0x slower |
+
+norm is 3-6x faster with 3-9x fewer memory allocations. The advantage comes from cached struct metadata — reflection happens once per type, then all query building uses pre-computed field lists.
+
+Run benchmarks yourself:
+```shell
+go test -bench=. -benchmem -run=^$
+```
+
 ## Important notes on v3
 
 - `M(&obj)` returns a Model **bound to that specific instance**. `Pointers()`, `Values()`, and `Pointer()` work with the bound instance without additional parameters.
