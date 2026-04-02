@@ -2,343 +2,189 @@ package norm
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 )
 
-// operationMap maps condition operator names to SQL operators.
-var operationMap = map[string]string{
-	"gt":  ">",
-	"gte": ">=",
-	"lt":  "<",
-	"lte": "<=",
-	"ne":  "!=",
+// Cond represents a single WHERE condition for [BuildConditions].
+// Use the constructor functions ([Eq], [Gt], [Like], [In], [IsNull], etc.)
+// to create conditions.
+type Cond interface {
+	isCond()
 }
 
-// conditionBuilder accumulates WHERE conditions and bind values
-// while processing a single [BuildConditions] call.
-type conditionBuilder struct {
-	conditions []string
-	values     []any
-	field      *Field
-	suffix     string
-	prefix     string
+// condition represents a comparison condition (=, >, >=, <, <=, !=, LIKE).
+type condition struct {
+	field string
+	op    string
+	value any
 }
 
-// BuildConditions builds SQL WHERE conditions from a map of field names
-// to filter values. Returns a slice of condition strings and a slice of
-// bind values.
+func (c condition) isCond() {}
+
+// condIn represents an IN (...) condition.
+type condIn struct {
+	field  string
+	values []any
+}
+
+func (c condIn) isCond() {}
+
+// condIsNull represents IS NULL / IS NOT NULL.
+type condIsNull struct {
+	field  string
+	isNull bool
+}
+
+func (c condIsNull) isCond() {}
+
+// prefixOption also implements Cond so Prefix() works in BuildConditions.
+func (o prefixOption) isCond() {}
+
+// Eq creates an equality condition: field = value.
 //
-// The prefix parameter adds a table alias to all field references (e.g. "u."
-// for JOINs). Map keys are field names (any format) or "field->>jsonKey"
-// for JSON field access.
+//	norm.Eq("name", "John")  // name=$1
+func Eq(field string, value any) Cond {
+	return condition{field: field, op: "=", value: value}
+}
+
+// Gt creates a greater-than condition: field > value.
 //
-// Supported value types:
-//   - Direct value (string, int, float, bool): equality condition
-//   - map[string]any with operators: {"gt": 18, "lte": 65, "like": "%john%",
-//     "isNull": true}
-//   - []any: IN clause
+//	norm.Gt("age", 18)  // age > $1
+func Gt(field string, value any) Cond {
+	return condition{field: field, op: ">", value: value}
+}
+
+// Gte creates a greater-or-equal condition: field >= value.
 //
-//	conds, vals := m.BuildConditions(map[string]any{
-//	    "name": "John",
-//	    "age":  map[string]any{"gte": 18, "lt": 65},
-//	}, "")
-func (m *modelMeta) BuildConditions(obj map[string]any, prefix string) ([]string, []any) {
-
-	builder := conditionBuilder{
-		conditions: make([]string, 0),
-		values:     make([]any, 0),
-		prefix:     prefix,
-	}
-
-	for k, v := range obj {
-
-		builder.suffix = ""
-		fieldName := k
-		parts := strings.Split(fieldName, "->>")
-		if len(parts) == 2 {
-			fieldName = parts[0]
-			builder.suffix = "->>" + parts[1]
-		}
-		mField, ok := m.fieldByAnyName[fieldName]
-		if !ok {
-			continue
-		}
-
-		val := reflect.ValueOf(v)
-		builder.field = mField
-		builder.getCondition(val)
-	}
-
-	return builder.conditions, builder.values
+//	norm.Gte("age", 18)  // age >= $1
+func Gte(field string, value any) Cond {
+	return condition{field: field, op: ">=", value: value}
 }
 
-// getCondition dispatches to the appropriate type-specific condition builder.
-func (b *conditionBuilder) getCondition(val reflect.Value) {
-	var res []string
-
-	vType := indirectType(b.field.valType)
-
-	switch vType.Kind() {
-	case reflect.String:
-		res = b.stringCondition(val)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		res = b.intCondition(val)
-	case reflect.Float32, reflect.Float64:
-		res = b.floatCondition(val)
-	case reflect.Bool:
-		res = b.boolCondition(val)
-	case reflect.Struct:
-		if b.field.valType.String() == "time.Time" {
-			res = b.timeCondition(val)
-		}
-	case reflect.Map:
-		if b.suffix != "" {
-			res = b.stringCondition(val)
-		}
-	}
-
-	if len(res) > 0 {
-		b.conditions = append(b.conditions, res...)
-	}
+// Lt creates a less-than condition: field < value.
+//
+//	norm.Lt("age", 65)  // age < $1
+func Lt(field string, value any) Cond {
+	return condition{field: field, op: "<", value: value}
 }
 
-// stringCondition builds conditions for string-typed fields.
-// Supports equality, LIKE, IS NULL, and IN operators.
-func (b *conditionBuilder) stringCondition(val reflect.Value) []string {
-	res := make([]string, 0)
-
-	switch val.Kind() {
-	case reflect.String:
-		b.values = append(b.values, val.Interface())
-		res = append(res, fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
-	case reflect.Map:
-		keys := val.MapKeys()
-		for _, k := range keys {
-			if k.Kind() != reflect.String {
-				return nil
-			}
-			switch k.String() {
-			case "like":
-				v := val.MapIndex(k)
-				b.values = append(b.values, v.Elem().Interface())
-				res = append(res, fmt.Sprintf("%s%s%s LIKE $%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
-			case "isNull":
-				v := val.MapIndex(k)
-				if v.Elem().Kind() == reflect.Bool {
-					if v.Elem().Bool() {
-						res = append(res, fmt.Sprintf("%s%s%s IS NULL", b.prefix, b.field.dbName, b.suffix))
-					} else {
-						res = append(res, fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix))
-					}
-				}
-			}
-		}
-	case reflect.Slice:
-		l := val.Len()
-		a := make([]string, l)
-		for i := 0; i < l; i++ {
-			b.values = append(b.values, val.Index(i).Interface())
-			a[i] = fmt.Sprintf("$%d", len(b.values))
-		}
-		res = append(res, fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", ")))
-	}
-
-	return res
+// Lte creates a less-or-equal condition: field <= value.
+//
+//	norm.Lte("age", 65)  // age <= $1
+func Lte(field string, value any) Cond {
+	return condition{field: field, op: "<=", value: value}
 }
 
-// intCondition builds conditions for integer-typed fields (all int and uint sizes).
-// Supports equality, comparison operators (gt, gte, lt, lte, ne), IS NULL, and IN.
-func (b *conditionBuilder) intCondition(val reflect.Value) []string {
-	res := make([]string, 0)
-
-	switch val.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		b.values = append(b.values, val.Interface())
-		res = append(res, fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
-	case reflect.Map:
-		localRes := ""
-		keys := val.MapKeys()
-		for _, k := range keys {
-			if k.Kind() != reflect.String {
-				return nil
-			}
-
-			v := val.MapIndex(k)
-
-			switch k.String() {
-			case "gt", "gte", "lt", "lte", "ne":
-				switch v.Elem().Kind() {
-				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-					if localRes != "" {
-						localRes += " AND "
-					}
-					b.values = append(b.values, v.Elem().Interface())
-					localRes = fmt.Sprintf("%s%s%s%s %s $%d", localRes, b.prefix, b.field.dbName, b.suffix, operationMap[k.String()], len(b.values))
-				}
-			case "isNull":
-				if v.Elem().Kind() == reflect.Bool {
-					if v.Elem().Bool() {
-						localRes = fmt.Sprintf("%s%s%s%s IS NULL", localRes, b.prefix, b.field.dbName, b.suffix)
-					} else {
-						localRes = fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix)
-					}
-				}
-			}
-		}
-		res = append(res, localRes)
-	case reflect.Slice:
-		l := val.Len()
-		a := make([]string, l)
-		for i := 0; i < l; i++ {
-			b.values = append(b.values, val.Index(i).Interface())
-			a[i] = fmt.Sprintf("$%d", len(b.values))
-		}
-		res = append(res, fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", ")))
-	}
-
-	return res
+// Ne creates a not-equal condition: field != value.
+//
+//	norm.Ne("status", "deleted")  // status != $1
+func Ne(field string, value any) Cond {
+	return condition{field: field, op: "!=", value: value}
 }
 
-// boolCondition builds conditions for boolean-typed fields.
-// Supports equality and IS NULL.
-func (b *conditionBuilder) boolCondition(val reflect.Value) []string {
-	res := make([]string, 0)
-
-	switch val.Kind() {
-	case reflect.Bool:
-		b.values = append(b.values, val.Interface())
-		res = append(res, fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
-	case reflect.Map:
-		keys := val.MapKeys()
-		for _, k := range keys {
-			if k.Kind() != reflect.String {
-				return nil
-			}
-			if k.String() == "isNull" {
-				v := val.MapIndex(k)
-				if v.Elem().Kind() == reflect.Bool {
-					if v.Elem().Bool() {
-						res = append(res, fmt.Sprintf("%s%s%s IS NULL", b.prefix, b.field.dbName, b.suffix))
-					} else {
-						res = append(res, fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix))
-					}
-				}
-			}
-		}
-	}
-
-	return res
+// Like creates a LIKE condition: field LIKE value.
+//
+//	norm.Like("name", "%john%")  // name LIKE $1
+func Like(field string, value any) Cond {
+	return condition{field: field, op: "LIKE", value: value}
 }
 
-// floatCondition builds conditions for float-typed fields (float32, float64).
-// Supports equality, comparison operators (gt, gte, lt, lte, ne), IS NULL, and IN.
-func (b *conditionBuilder) floatCondition(val reflect.Value) []string {
-	res := make([]string, 0)
-
-	switch val.Kind() {
-	case reflect.Float32, reflect.Float64:
-		b.values = append(b.values, val.Interface())
-		res = append(res, fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
-	case reflect.Map:
-		localRes := ""
-		keys := val.MapKeys()
-		for _, k := range keys {
-			if k.Kind() != reflect.String {
-				return nil
-			}
-
-			v := val.MapIndex(k)
-
-			switch k.String() {
-			case "gt", "gte", "lt", "lte", "ne":
-				switch v.Elem().Kind() {
-				case reflect.Float32, reflect.Float64:
-					if localRes != "" {
-						localRes += " AND "
-					}
-					b.values = append(b.values, v.Elem().Interface())
-					localRes = fmt.Sprintf("%s%s%s%s %s $%d", localRes, b.prefix, b.field.dbName, b.suffix, operationMap[k.String()], len(b.values))
-				}
-			case "isNull":
-				if v.Elem().Kind() == reflect.Bool {
-					if v.Elem().Bool() {
-						localRes = fmt.Sprintf("%s%s%s%s IS NULL", localRes, b.prefix, b.field.dbName, b.suffix)
-					} else {
-						localRes = fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix)
-					}
-				}
-			}
-		}
-		if localRes != "" {
-			res = append(res, localRes)
-		}
-	case reflect.Slice:
-		l := val.Len()
-		a := make([]string, l)
-		for i := 0; i < l; i++ {
-			b.values = append(b.values, val.Index(i).Interface())
-			a[i] = fmt.Sprintf("$%d", len(b.values))
-		}
-		res = append(res, fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", ")))
-	}
-
-	return res
+// IsNull creates an IS NULL or IS NOT NULL condition.
+//
+//	norm.IsNull("email", true)   // email IS NULL
+//	norm.IsNull("email", false)  // email IS NOT NULL
+func IsNull(field string, isNull bool) Cond {
+	return condIsNull{field: field, isNull: isNull}
 }
 
-// timeCondition builds conditions for time.Time fields.
-// Time values are passed as strings. Supports equality, comparison operators
-// (gt, gte, lt, lte, ne), IS NULL, and IN.
-func (b *conditionBuilder) timeCondition(val reflect.Value) []string {
-	res := make([]string, 0)
+// In creates an IN (...) condition.
+//
+//	norm.In("id", 1, 2, 3)          // id IN ($1, $2, $3)
+//	norm.In("name", "Alice", "Bob") // name IN ($1, $2)
+func In(field string, values ...any) Cond {
+	return condIn{field: field, values: values}
+}
 
-	switch val.Kind() {
-	case reflect.String:
-		b.values = append(b.values, val.Interface())
-		res = append(res, fmt.Sprintf("%s%s%s=$%d", b.prefix, b.field.dbName, b.suffix, len(b.values)))
-	case reflect.Map:
-		localRes := ""
-		keys := val.MapKeys()
-		for _, k := range keys {
-			if k.Kind() != reflect.String {
-				return nil
-			}
+// parseFieldSuffix splits "data->>key" into ("data", "->>key").
+// Returns (field, "") if no JSON accessor is present.
+func parseFieldSuffix(field string) (string, string) {
+	parts := strings.Split(field, "->>")
+	if len(parts) == 2 {
+		return parts[0], "->>" + parts[1]
+	}
+	return field, ""
+}
 
-			v := val.MapIndex(k)
-
-			switch k.String() {
-			case "gt", "gte", "lt", "lte", "ne":
-				switch v.Elem().Kind() {
-				case reflect.String:
-					if localRes != "" {
-						localRes += " AND "
-					}
-					b.values = append(b.values, v.Elem().Interface())
-					localRes = fmt.Sprintf("%s%s%s%s %s $%d", localRes, b.prefix, b.field.dbName, b.suffix, operationMap[k.String()], len(b.values))
-				}
-			case "isNull":
-				if v.Elem().Kind() == reflect.Bool {
-					if v.Elem().Bool() {
-						localRes = fmt.Sprintf("%s%s%s%s IS NULL", localRes, b.prefix, b.field.dbName, b.suffix)
-					} else {
-						localRes = fmt.Sprintf("%s%s%s IS NOT NULL", b.prefix, b.field.dbName, b.suffix)
-					}
-				}
-			}
+// BuildConditions builds SQL WHERE conditions from typed [Cond] values.
+// Returns a slice of condition strings and a slice of bind values.
+//
+// Use [Prefix] to add a table alias to all column references (e.g. for JOINs).
+// Field names accept any format (struct name, camelCase, snake_case).
+// Use "field->>jsonKey" for JSON field access.
+//
+//	conds, vals := m.BuildConditions(
+//	    norm.Eq("name", "John"),
+//	    norm.Gte("age", 18),
+//	    norm.Lt("age", 65),
+//	    norm.In("id", 1, 2, 3),
+//	    norm.Like("email", "%@gmail.com"),
+//	    norm.IsNull("deleted_at", true),
+//	    norm.Prefix("u."),
+//	)
+func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
+	var prefix string
+	for _, c := range conds {
+		if p, ok := c.(prefixOption); ok {
+			prefix = string(p)
 		}
-		res = append(res, localRes)
-	case reflect.Slice:
-		l := val.Len()
-		a := make([]string, l)
-		for i := 0; i < l; i++ {
-			b.values = append(b.values, val.Index(i).Interface())
-			a[i] = fmt.Sprintf("$%d", len(b.values))
-		}
-		res = append(res, fmt.Sprintf("%s%s%s IN (%s)", b.prefix, b.field.dbName, b.suffix, strings.Join(a, ", ")))
 	}
 
-	return res
+	var conditions []string
+	var values []any
+
+	for _, c := range conds {
+		switch v := c.(type) {
+		case condition:
+			fieldName, suffix := parseFieldSuffix(v.field)
+			f, ok := m.fieldByAnyName[fieldName]
+			if !ok {
+				continue
+			}
+			values = append(values, v.value)
+			dbField := prefix + f.dbName + suffix
+			if v.op == "=" {
+				conditions = append(conditions, fmt.Sprintf("%s=$%d", dbField, len(values)))
+			} else {
+				conditions = append(conditions, fmt.Sprintf("%s %s $%d", dbField, v.op, len(values)))
+			}
+
+		case condIn:
+			fieldName, suffix := parseFieldSuffix(v.field)
+			f, ok := m.fieldByAnyName[fieldName]
+			if !ok {
+				continue
+			}
+			placeholders := make([]string, len(v.values))
+			for i, val := range v.values {
+				values = append(values, val)
+				placeholders[i] = fmt.Sprintf("$%d", len(values))
+			}
+			conditions = append(conditions, fmt.Sprintf("%s%s%s IN (%s)",
+				prefix, f.dbName, suffix, strings.Join(placeholders, ", ")))
+
+		case condIsNull:
+			fieldName, suffix := parseFieldSuffix(v.field)
+			f, ok := m.fieldByAnyName[fieldName]
+			if !ok {
+				continue
+			}
+			if v.isNull {
+				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NULL", prefix, f.dbName, suffix))
+			} else {
+				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NOT NULL", prefix, f.dbName, suffix))
+			}
+		}
+	}
+
+	return conditions, values
 }

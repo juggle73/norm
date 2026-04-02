@@ -22,155 +22,153 @@ func newCondTestModel() *Model {
 	return m
 }
 
-func TestBuildConditions_StringEquality(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"name": "John",
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "name=$1" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 1 || vals[0] != "John" {
-		t.Errorf("unexpected vals: %v", vals)
-	}
-}
-
-func TestBuildConditions_IntEquality(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"age": 25,
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "age=$1" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 1 || vals[0] != 25 {
-		t.Errorf("unexpected vals: %v", vals)
-	}
-}
-
-func TestBuildConditions_WithPrefix(t *testing.T) {
-	m := newCondTestModel()
-	conds, _ := m.BuildConditions(map[string]any{
-		"name": "John",
-	}, "u.")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "u.name=$1" {
-		t.Errorf("got %q", conds[0])
-	}
-}
-
-func TestBuildConditions_StringLike(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"name": map[string]any{"like": "%John%"},
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "name LIKE $1" {
-		t.Errorf("got %q", conds[0])
-	}
-	if vals[0] != "%John%" {
-		t.Errorf("unexpected val: %v", vals[0])
-	}
-}
-
-func TestBuildConditions_StringIsNull(t *testing.T) {
+func TestBuildConditions_Eq(t *testing.T) {
 	m := newCondTestModel()
 
-	t.Run("is null", func(t *testing.T) {
-		conds, _ := m.BuildConditions(map[string]any{
-			"name": map[string]any{"isNull": true},
-		}, "")
-		if len(conds) != 1 || conds[0] != "name IS NULL" {
-			t.Errorf("got %v", conds)
-		}
+	t.Run("string", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("name", "John"))
+		assertCond(t, conds, vals, "name=$1", "John")
 	})
 
-	t.Run("is not null", func(t *testing.T) {
-		conds, _ := m.BuildConditions(map[string]any{
-			"name": map[string]any{"isNull": false},
-		}, "")
-		if len(conds) != 1 || conds[0] != "name IS NOT NULL" {
-			t.Errorf("got %v", conds)
-		}
+	t.Run("int", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("age", 25))
+		assertCond(t, conds, vals, "age=$1", 25)
+	})
+
+	t.Run("bool", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("active", true))
+		assertCond(t, conds, vals, "active=$1", true)
+	})
+
+	t.Run("float", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("score", 9.5))
+		assertCond(t, conds, vals, "score=$1", 9.5)
+	})
+
+	t.Run("uint", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("count", uint(42)))
+		assertCond(t, conds, vals, "count=$1", uint(42))
 	})
 }
 
-func TestBuildConditions_StringIn(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"name": []any{"John", "Jane"},
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "name IN ($1, $2)" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 2 {
-		t.Errorf("expected 2 vals, got %d", len(vals))
-	}
-}
-
-func TestBuildConditions_IntComparison(t *testing.T) {
+func TestBuildConditions_Comparison(t *testing.T) {
 	m := newCondTestModel()
 
 	tests := []struct {
 		name string
-		op   string
+		cond Cond
 		want string
 	}{
-		{"greater than", "gt", ">"},
-		{"greater or equal", "gte", ">="},
-		{"less than", "lt", "<"},
-		{"less or equal", "lte", "<="},
-		{"not equal", "ne", "!="},
+		{"gt", Gt("age", 18), "age > $1"},
+		{"gte", Gte("age", 18), "age >= $1"},
+		{"lt", Lt("age", 65), "age < $1"},
+		{"lte", Lte("age", 65), "age <= $1"},
+		{"ne", Ne("age", 0), "age != $1"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			conds, vals := m.BuildConditions(map[string]any{
-				"age": map[string]any{tt.op: 18},
-			}, "")
-			if len(conds) != 1 {
-				t.Fatalf("expected 1 condition, got %d", len(conds))
+			conds, vals := m.BuildConditions(tt.cond)
+			if len(conds) != 1 || conds[0] != tt.want {
+				t.Errorf("got %v, want %q", conds, tt.want)
 			}
-			expected := "age " + tt.want + " $1"
-			if conds[0] != expected {
-				t.Errorf("got %q, want %q", conds[0], expected)
-			}
-			if vals[0] != 18 {
-				t.Errorf("expected val 18, got %v", vals[0])
+			if len(vals) != 1 {
+				t.Errorf("expected 1 val, got %d", len(vals))
 			}
 		})
 	}
 }
 
-func TestBuildConditions_IntIn(t *testing.T) {
+func TestBuildConditions_Like(t *testing.T) {
 	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"age": []any{18, 21, 25},
-	}, "")
+	conds, vals := m.BuildConditions(Like("name", "%John%"))
+	assertCond(t, conds, vals, "name LIKE $1", "%John%")
+}
 
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
+func TestBuildConditions_IsNull(t *testing.T) {
+	m := newCondTestModel()
+
+	t.Run("is null", func(t *testing.T) {
+		conds, vals := m.BuildConditions(IsNull("name", true))
+		if len(conds) != 1 || conds[0] != "name IS NULL" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 0 {
+			t.Errorf("expected 0 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("is not null", func(t *testing.T) {
+		conds, vals := m.BuildConditions(IsNull("name", false))
+		if len(conds) != 1 || conds[0] != "name IS NOT NULL" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 0 {
+			t.Errorf("expected 0 vals, got %d", len(vals))
+		}
+	})
+}
+
+func TestBuildConditions_In(t *testing.T) {
+	m := newCondTestModel()
+
+	t.Run("strings", func(t *testing.T) {
+		conds, vals := m.BuildConditions(In("name", "John", "Jane"))
+		if len(conds) != 1 || conds[0] != "name IN ($1, $2)" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 2 {
+			t.Errorf("expected 2 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("ints", func(t *testing.T) {
+		conds, vals := m.BuildConditions(In("age", 18, 21, 25))
+		if len(conds) != 1 || conds[0] != "age IN ($1, $2, $3)" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 3 {
+			t.Errorf("expected 3 vals, got %d", len(vals))
+		}
+	})
+
+	t.Run("floats", func(t *testing.T) {
+		conds, vals := m.BuildConditions(In("score", 1.0, 2.5, 3.7))
+		if len(conds) != 1 || conds[0] != "score IN ($1, $2, $3)" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 3 {
+			t.Errorf("expected 3 vals, got %d", len(vals))
+		}
+	})
+}
+
+func TestBuildConditions_Prefix(t *testing.T) {
+	m := newCondTestModel()
+	conds, _ := m.BuildConditions(Eq("name", "John"), Prefix("u."))
+	if len(conds) != 1 || conds[0] != "u.name=$1" {
+		t.Errorf("got %v", conds)
 	}
-	if conds[0] != "age IN ($1, $2, $3)" {
-		t.Errorf("got %q", conds[0])
+}
+
+func TestBuildConditions_Multiple(t *testing.T) {
+	m := newCondTestModel()
+	conds, vals := m.BuildConditions(
+		Eq("name", "John"),
+		Gte("age", 18),
+		Lt("age", 65),
+	)
+	if len(conds) != 3 {
+		t.Fatalf("expected 3 conditions, got %d", len(conds))
+	}
+	if conds[0] != "name=$1" {
+		t.Errorf("cond[0] = %q", conds[0])
+	}
+	if conds[1] != "age >= $2" {
+		t.Errorf("cond[1] = %q", conds[1])
+	}
+	if conds[2] != "age < $3" {
+		t.Errorf("cond[2] = %q", conds[2])
 	}
 	if len(vals) != 3 {
 		t.Errorf("expected 3 vals, got %d", len(vals))
@@ -179,153 +177,51 @@ func TestBuildConditions_IntIn(t *testing.T) {
 
 func TestBuildConditions_UnknownField(t *testing.T) {
 	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"nonexistent": "value",
-	}, "")
-
+	conds, vals := m.BuildConditions(Eq("nonexistent", "value"))
 	if len(conds) != 0 {
-		t.Errorf("expected 0 conditions for unknown field, got %d", len(conds))
+		t.Errorf("expected 0 conditions, got %d", len(conds))
 	}
 	if len(vals) != 0 {
 		t.Errorf("expected 0 vals, got %d", len(vals))
 	}
 }
 
-func TestBuildConditions_IntIsNull(t *testing.T) {
-	m := newCondTestModel()
+func TestBuildConditions_JSONAccess(t *testing.T) {
+	n := NewNorm(nil)
 
-	conds, _ := m.BuildConditions(map[string]any{
-		"age": map[string]any{"isNull": true},
-	}, "")
-	if len(conds) != 1 || conds[0] != "age IS NULL" {
+	type Doc struct {
+		Id   int            `norm:"pk"`
+		Data map[string]any `norm:"dbType=jsonb"`
+	}
+
+	m, _ := n.M(&Doc{})
+	conds, vals := m.BuildConditions(Eq("data->>key", "value"))
+	if len(conds) != 1 || conds[0] != "data->>key=$1" {
 		t.Errorf("got %v", conds)
 	}
-}
-
-func TestBuildConditions_BoolEquality(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"active": true,
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "active=$1" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 1 || vals[0] != true {
+	if len(vals) != 1 || vals[0] != "value" {
 		t.Errorf("unexpected vals: %v", vals)
 	}
 }
 
-func TestBuildConditions_BoolIsNull(t *testing.T) {
+func TestBuildConditions_Empty(t *testing.T) {
 	m := newCondTestModel()
-
-	conds, _ := m.BuildConditions(map[string]any{
-		"active": map[string]any{"isNull": true},
-	}, "")
-	if len(conds) != 1 || conds[0] != "active IS NULL" {
-		t.Errorf("got %v", conds)
+	conds, vals := m.BuildConditions()
+	if len(conds) != 0 || len(vals) != 0 {
+		t.Errorf("expected empty, got conds=%v vals=%v", conds, vals)
 	}
 }
 
-func TestBuildConditions_FloatEquality(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"score": 9.5,
-	}, "")
-
+// assertCond checks a single condition + single value result.
+func assertCond(t *testing.T, conds []string, vals []any, wantCond string, wantVal any) {
+	t.Helper()
 	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
+		t.Fatalf("expected 1 condition, got %d: %v", len(conds), conds)
 	}
-	if conds[0] != "score=$1" {
-		t.Errorf("got %q", conds[0])
+	if conds[0] != wantCond {
+		t.Errorf("condition = %q, want %q", conds[0], wantCond)
 	}
-	if len(vals) != 1 || vals[0] != 9.5 {
-		t.Errorf("unexpected vals: %v", vals)
-	}
-}
-
-func TestBuildConditions_FloatComparison(t *testing.T) {
-	m := newCondTestModel()
-
-	conds, vals := m.BuildConditions(map[string]any{
-		"score": map[string]any{"gte": 5.0, "lt": 10.0},
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if len(vals) != 2 {
-		t.Fatalf("expected 2 vals, got %d", len(vals))
-	}
-}
-
-func TestBuildConditions_FloatIn(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"score": []any{1.0, 2.5, 3.7},
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "score IN ($1, $2, $3)" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 3 {
-		t.Errorf("expected 3 vals, got %d", len(vals))
-	}
-}
-
-func TestBuildConditions_UintEquality(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"count": uint(42),
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "count=$1" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 1 || vals[0] != uint(42) {
-		t.Errorf("unexpected vals: %v", vals)
-	}
-}
-
-func TestBuildConditions_UintComparison(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"count": map[string]any{"gte": uint(10)},
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "count >= $1" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 1 {
-		t.Errorf("expected 1 val, got %d", len(vals))
-	}
-}
-
-func TestBuildConditions_UintIn(t *testing.T) {
-	m := newCondTestModel()
-	conds, vals := m.BuildConditions(map[string]any{
-		"count": []any{uint(1), uint(2), uint(3)},
-	}, "")
-
-	if len(conds) != 1 {
-		t.Fatalf("expected 1 condition, got %d", len(conds))
-	}
-	if conds[0] != "count IN ($1, $2, $3)" {
-		t.Errorf("got %q", conds[0])
-	}
-	if len(vals) != 3 {
-		t.Errorf("expected 3 vals, got %d", len(vals))
+	if len(vals) != 1 || vals[0] != wantVal {
+		t.Errorf("vals = %v, want [%v]", vals, wantVal)
 	}
 }

@@ -106,9 +106,10 @@ func (opt prefixOption) Type() OptionType { return PrefixOption }
 func (opt prefixOption) Value() any       { return string(opt) }
 
 // Prefix creates an option that adds a table alias prefix to field names.
+// Also usable in [BuildConditions] to prefix all column references.
 //
 //	m.Fields(norm.Prefix("u.")) // "u.id, u.name, u.email"
-func Prefix(prefix string) Option {
+func Prefix(prefix string) prefixOption {
 	return prefixOption(prefix)
 }
 
