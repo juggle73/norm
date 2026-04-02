@@ -145,10 +145,67 @@ func TestBuildConditions_In(t *testing.T) {
 
 func TestBuildConditions_Prefix(t *testing.T) {
 	m := newCondTestModel()
-	conds, _ := m.BuildConditions(Eq("name", "John"), Prefix("u."))
-	if len(conds) != 1 || conds[0] != "u.name=$1" {
-		t.Errorf("got %v", conds)
-	}
+
+	t.Run("global prefix", func(t *testing.T) {
+		conds, _ := m.BuildConditions(Eq("name", "John"), Prefix("u."))
+		if len(conds) != 1 || conds[0] != "u.name=$1" {
+			t.Errorf("got %v", conds)
+		}
+	})
+
+	t.Run("inline dot prefix", func(t *testing.T) {
+		conds, _ := m.BuildConditions(Eq("t.name", "John"))
+		if len(conds) != 1 || conds[0] != "t.name=$1" {
+			t.Errorf("got %v", conds)
+		}
+	})
+
+	t.Run("inline prefix overrides global", func(t *testing.T) {
+		conds, _ := m.BuildConditions(Eq("t.name", "John"), Prefix("u."))
+		if len(conds) != 1 || conds[0] != "t.name=$1" {
+			t.Errorf("got %v, want [t.name=$1]", conds)
+		}
+	})
+
+	t.Run("inline prefix with comparison", func(t *testing.T) {
+		conds, _ := m.BuildConditions(Gte("u.age", 18))
+		if len(conds) != 1 || conds[0] != "u.age >= $1" {
+			t.Errorf("got %v", conds)
+		}
+	})
+
+	t.Run("inline prefix with In", func(t *testing.T) {
+		conds, _ := m.BuildConditions(In("t.age", 1, 2, 3))
+		if len(conds) != 1 || conds[0] != "t.age IN ($1, $2, $3)" {
+			t.Errorf("got %v", conds)
+		}
+	})
+
+	t.Run("inline prefix with IsNull", func(t *testing.T) {
+		conds, _ := m.BuildConditions(IsNull("u.name", true))
+		if len(conds) != 1 || conds[0] != "u.name IS NULL" {
+			t.Errorf("got %v", conds)
+		}
+	})
+
+	t.Run("mixed prefixes", func(t *testing.T) {
+		conds, vals := m.BuildConditions(
+			Eq("u.name", "John"),
+			Gte("o.age", 18),
+		)
+		if len(conds) != 2 {
+			t.Fatalf("expected 2 conditions, got %d", len(conds))
+		}
+		if conds[0] != "u.name=$1" {
+			t.Errorf("cond[0] = %q", conds[0])
+		}
+		if conds[1] != "o.age >= $2" {
+			t.Errorf("cond[1] = %q", conds[1])
+		}
+		if len(vals) != 2 {
+			t.Errorf("expected 2 vals, got %d", len(vals))
+		}
+	})
 }
 
 func TestBuildConditions_Multiple(t *testing.T) {
@@ -195,13 +252,26 @@ func TestBuildConditions_JSONAccess(t *testing.T) {
 	}
 
 	m, _ := n.M(&Doc{})
-	conds, vals := m.BuildConditions(Eq("data->>key", "value"))
-	if len(conds) != 1 || conds[0] != "data->>key=$1" {
-		t.Errorf("got %v", conds)
-	}
-	if len(vals) != 1 || vals[0] != "value" {
-		t.Errorf("unexpected vals: %v", vals)
-	}
+
+	t.Run("simple", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("data->>key", "value"))
+		if len(conds) != 1 || conds[0] != "data->>key=$1" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 1 || vals[0] != "value" {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
+
+	t.Run("with dot prefix", func(t *testing.T) {
+		conds, vals := m.BuildConditions(Eq("t.data->>key", "value"))
+		if len(conds) != 1 || conds[0] != "t.data->>key=$1" {
+			t.Errorf("got %v", conds)
+		}
+		if len(vals) != 1 || vals[0] != "value" {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
 }
 
 func TestBuildConditions_Empty(t *testing.T) {
