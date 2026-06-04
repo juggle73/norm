@@ -51,7 +51,7 @@ norm solves that middle layer: less boilerplate than raw SQL, less magic than OR
 - [Embedded structs](#embedded-structs)
 - [JSON struct fields](#json-struct-fields)
 - [Query building](#query-building)
-  - [SELECT](#select) · [INSERT](#insert) · [UPDATE](#update) · [DELETE](#delete)
+  - [SELECT](#select) · [INSERT](#insert) · [UPSERT / ON CONFLICT](#upsert--on-conflict) · [UPDATE](#update) · [DELETE](#delete)
   - [JOIN](#join) · [Auto JOIN with FK tags](#auto-join-with-fk-tags)
   - [ORDER BY](#order-by) · [LIMIT / OFFSET](#limit--offset) · [Extra scan targets](#extra-scan-targets)
 - [WHERE conditions builder](#where-conditions-builder)
@@ -147,6 +147,7 @@ go run .
 | Example | Shows |
 |---------|-------|
 | [`pgx_crud`](examples/pgx_crud) | Full CRUD cycle over a pgx pool |
+| [`upsert`](examples/upsert) | `INSERT ... ON CONFLICT` (UPSERT) |
 | [`dynamic_filters`](examples/dynamic_filters) | Runtime `WHERE` building with `BuildConditions` |
 | [`joins`](examples/joins) | Explicit and FK-driven (`Auto`) joins |
 | [`migration_sync`](examples/migration_sync) | `Sync`, `Diff` and `CreateTableSQL` |
@@ -371,6 +372,69 @@ sql, vals, _ := m.Insert(norm.Exclude("id"), norm.Returning("Id"))
 
 err := pool.QueryRow(ctx, sql, vals...).Scan(m.Pointer("Id"))
 ```
+
+### UPSERT / ON CONFLICT
+
+PostgreSQL `INSERT ... ON CONFLICT` is built from the same `Insert()` call via the
+`OnConflict()` option. norm only generates the SQL and args — execution stays yours.
+
+Finalize the clause with `DoNothing()` or `DoUpdate(...)`. Conflict and update
+columns accept any field-name format (struct, camelCase, snake_case) and are
+validated against the model.
+
+**DO NOTHING** — insert, or skip silently on conflict:
+
+```go
+sql, vals, _ := m.Insert(
+    norm.Exclude("id"),
+    norm.OnConflict("email").DoNothing(),
+)
+// → "INSERT INTO users (name, email) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING"
+```
+
+**DO UPDATE** — insert, or update the listed columns on conflict. Each column is
+set to its proposed value via `EXCLUDED`:
+
+```go
+sql, vals, _ := m.Insert(
+    norm.Exclude("id"),
+    norm.OnConflict("email").DoUpdate("name", "updated_at"),
+)
+// → "INSERT INTO users (name, email, updated_at) VALUES ($1, $2, $3)
+//    ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
+```
+
+**DO UPDATE + RETURNING** — the clause order is always `INSERT … ON CONFLICT … RETURNING`:
+
+```go
+sql, vals, _ := m.Insert(
+    norm.Exclude("id"),
+    norm.OnConflict("email").DoUpdate("name"),
+    norm.Returning("id"),
+)
+// → "INSERT INTO users (name, email) VALUES ($1, $2)
+//    ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name RETURNING id"
+
+err := pool.QueryRow(ctx, sql, vals...).Scan(m.Pointer("Id"))
+```
+
+**Composite conflict target** — pass multiple columns to `OnConflict`:
+
+```go
+sql, vals, _ := m.Insert(
+    norm.Exclude("id"),
+    norm.OnConflict("provider", "external_id").DoUpdate("payload"),
+)
+// → "... ON CONFLICT (provider, external_id) DO UPDATE SET payload = EXCLUDED.payload"
+```
+
+Option order does not matter. `Insert` returns an error if: no conflict columns
+are given, `DoUpdate` has no columns, a column name is unknown, both `DoNothing`
+and `DoUpdate` are set, or more than one `OnConflict` is passed.
+
+> Out of scope for now: `ON CONSTRAINT`, partial-index predicates
+> (`ON CONFLICT (...) WHERE ...`), custom update expressions, a `WHERE` after
+> `DO UPDATE`, and multi-row UPSERT.
 
 ### UPDATE
 
@@ -716,6 +780,8 @@ Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to overr
 | `Order("field [ASC\|DESC]")` | ORDER BY clause | Select |
 | `AddTargets(&var1, &var2)` | Extra scan targets | Pointers |
 | `Where("field = ?", val)` | WHERE with ? placeholders | Select, Update, Delete |
+| `OnConflict("col").DoNothing()` | ON CONFLICT ... DO NOTHING | Insert |
+| `OnConflict("col").DoUpdate("c1","c2")` | ON CONFLICT ... DO UPDATE SET | Insert |
 
 ## Model methods reference
 

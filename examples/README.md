@@ -34,6 +34,7 @@ with the `DATABASE_URL` environment variable.
 | Directory | Shows |
 |-----------|-------|
 | [`pgx_crud`](pgx_crud) | Full CRUD cycle (INSERT / SELECT / UPDATE / DELETE) over a pgx pool, with `migrate.Sync` to create the table. |
+| [`upsert`](upsert) | `INSERT ... ON CONFLICT` — `DO NOTHING`, `DO UPDATE`, composite keys, `RETURNING`. |
 | [`dynamic_filters`](dynamic_filters) | Building `WHERE` clauses at runtime from optional filters with `BuildConditions`. |
 | [`joins`](joins) | Querying across tables with `NewJoin` and FK-driven `Auto` joins. |
 | [`migration_sync`](migration_sync) | `migrate.Sync`, `Diff` and `CreateTableSQL` against a live database. |

@@ -18,6 +18,7 @@ const (
 	OffsetOption                       // OFFSET value
 	LimitOption                        // LIMIT value
 	OrderByOption                      // ORDER BY clause
+	ConflictOpt                        // ON CONFLICT (UPSERT) clause
 )
 
 // Option is a functional option for customizing query building methods.
@@ -185,6 +186,52 @@ func Order(orderBy string) Option {
 	return orderByOption(orderBy)
 }
 
+// ConflictOption describes a PostgreSQL "ON CONFLICT" (UPSERT) clause for
+// [Model.Insert]. Create it with [OnConflict] and finalize it with either
+// [ConflictOption.DoNothing] or [ConflictOption.DoUpdate]; the finalizing call
+// returns an [Option] suitable for passing to Insert.
+//
+//	m.Insert(norm.OnConflict("email").DoNothing())
+//	m.Insert(norm.OnConflict("email").DoUpdate("name", "updated_at"))
+//
+// Validation (empty/unknown columns, DoNothing+DoUpdate together, more than one
+// OnConflict per query) is reported as an error returned by Insert.
+type ConflictOption struct {
+	columns       []string
+	doNothing     bool
+	doUpdate      bool
+	updateColumns []string
+}
+
+// OnConflict starts an "ON CONFLICT (columns...)" clause. The columns are the
+// conflict target (a unique index / constraint), given in any field-name format.
+// Call [ConflictOption.DoNothing] or [ConflictOption.DoUpdate] to finish it.
+//
+//	norm.OnConflict("email")
+//	norm.OnConflict("provider", "external_id")
+func OnConflict(columns ...string) *ConflictOption {
+	return &ConflictOption{columns: columns}
+}
+
+// DoNothing finalizes the clause as "ON CONFLICT (...) DO NOTHING".
+func (c *ConflictOption) DoNothing() Option {
+	c.doNothing = true
+	return c
+}
+
+// DoUpdate finalizes the clause as
+// "ON CONFLICT (...) DO UPDATE SET col = EXCLUDED.col, ...".
+// The columns (any field-name format) are the columns to overwrite with the
+// values proposed for insertion.
+func (c *ConflictOption) DoUpdate(columns ...string) Option {
+	c.doUpdate = true
+	c.updateColumns = columns
+	return c
+}
+
+func (c *ConflictOption) Type() OptionType { return ConflictOpt }
+func (c *ConflictOption) Value() any       { return c }
+
 // ComposedOptions holds the parsed result of all options passed to a method.
 type ComposedOptions struct {
 	Exclude    []string
@@ -196,6 +243,11 @@ type ComposedOptions struct {
 	Offset     int
 	Limit      int
 	OrderBy    string
+	Conflict   *ConflictOption
+
+	// multipleConflicts is set when more than one OnConflict option is passed,
+	// which is reported as an error by Insert.
+	multipleConflicts bool
 }
 
 // ComposeOptions parses a list of [Option] values into a single [ComposedOptions].
@@ -230,6 +282,11 @@ func ComposeOptions(opts ...Option) ComposedOptions {
 			res.Limit = int(opt)
 		case orderByOption:
 			res.OrderBy = string(opt)
+		case *ConflictOption:
+			if res.Conflict != nil {
+				res.multipleConflicts = true
+			}
+			res.Conflict = opt
 		}
 	}
 

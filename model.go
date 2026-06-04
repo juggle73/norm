@@ -347,6 +347,15 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 		strings.Join(binds, ", "),
 	)
 
+	if co.multipleConflicts {
+		return "", nil, errors.New("Insert: only one OnConflict option is allowed")
+	}
+	conflictSQL, err := m.conflictSQL(co.Conflict)
+	if err != nil {
+		return "", nil, err
+	}
+	sql += conflictSQL
+
 	retSQL, err := m.returningSQL(co.Returning)
 	if err != nil {
 		return "", nil, err
@@ -354,6 +363,64 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	sql += retSQL
 
 	return sql, vals, nil
+}
+
+// conflictSQL builds the " ON CONFLICT (...) DO ..." clause from a
+// [ConflictOption]. Returns "" when c is nil. Column names accept any
+// field-name format and are validated against the model.
+// Must be called under m.mut.RLock.
+func (m *modelMeta) conflictSQL(c *ConflictOption) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	if len(c.columns) == 0 {
+		return "", errors.New("OnConflict: at least one conflict column is required")
+	}
+	if c.doNothing && c.doUpdate {
+		return "", errors.New("OnConflict: DoNothing and DoUpdate are mutually exclusive")
+	}
+	if !c.doNothing && !c.doUpdate {
+		return "", errors.New("OnConflict: call DoNothing or DoUpdate to finalize the clause")
+	}
+
+	targets, err := m.resolveColumns("OnConflict", c.columns)
+	if err != nil {
+		return "", err
+	}
+	clause := fmt.Sprintf(" ON CONFLICT (%s)", strings.Join(targets, ", "))
+
+	if c.doNothing {
+		return clause + " DO NOTHING", nil
+	}
+
+	if len(c.updateColumns) == 0 {
+		return "", errors.New("OnConflict: DoUpdate requires at least one update column")
+	}
+	updates, err := m.resolveColumns("OnConflict", c.updateColumns)
+	if err != nil {
+		return "", err
+	}
+	sets := make([]string, len(updates))
+	for i, col := range updates {
+		sets[i] = fmt.Sprintf("%s = EXCLUDED.%s", col, col)
+	}
+	return clause + " DO UPDATE SET " + strings.Join(sets, ", "), nil
+}
+
+// resolveColumns maps each name (any field-name format) to its db column name,
+// returning an error for unknown names. ctx labels the error source.
+// Must be called under m.mut.RLock.
+func (m *modelMeta) resolveColumns(ctx string, names []string) ([]string, error) {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		field, ok := m.fieldByAnyName[name]
+		if !ok {
+			return nil, fmt.Errorf("%s: unknown column %q", ctx, name)
+		}
+		out = append(out, field.dbName)
+	}
+	return out, nil
 }
 
 // Update builds a full UPDATE query and returns the SQL string and combined

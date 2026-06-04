@@ -31,6 +31,10 @@
 //	sql, vals, _ := m.Insert(norm.Exclude("id"))
 //	_, _ = pool.Exec(ctx, sql, vals...)
 //
+//	// UPSERT (INSERT ... ON CONFLICT)
+//	sql, vals, _ = m.Insert(norm.Exclude("id"), norm.OnConflict("email").DoUpdate("name"))
+//	_, _ = pool.Exec(ctx, sql, vals...)
+//
 // # Field and table naming
 //
 // All names are automatically converted to snake_case:
