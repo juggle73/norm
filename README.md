@@ -1,11 +1,48 @@
-# norm - SQL query helper for Go structs
+# norm
 
-norm is a lightweight library that simplifies building SQL queries from Go structs for PostgreSQL. It is **not an ORM** — it does not execute queries or manage connections. Instead, it generates SQL fragments (field lists, bind parameters, WHERE conditions) that you compose into queries yourself. Works with any PostgreSQL driver (pgx, lib/pq, etc.).
+[![Go Reference](https://pkg.go.dev/badge/github.com/juggle73/norm/v4.svg)](https://pkg.go.dev/github.com/juggle73/norm/v4)
+[![Go Report Card](https://goreportcard.com/badge/github.com/juggle73/norm/v4)](https://goreportcard.com/report/github.com/juggle73/norm/v4)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+Lightweight PostgreSQL SQL query helper for Go structs.
+
+- Not an ORM
+- No hidden database calls
+- No connection management
+- Works with pgx, lib/pq and database/sql
+- Generates SELECT / INSERT / UPDATE / DELETE SQL from Go structs
+- Handles bind placeholders, field lists, scan pointers and simple migrations
+- 3–6x faster than common Go query builders in pure SQL generation benchmarks
+
+## Why?
+
+In many Go services you want to keep raw SQL control, but still avoid this boilerplate:
+
+- manually listing columns in every INSERT / UPDATE / SELECT
+- keeping `$1, $2, $3...` placeholders in sync
+- duplicating scan pointers
+- repeating struct-to-table metadata
+- writing small safe schema sync helpers for internal tools and MVPs
+
+norm solves that middle layer: less boilerplate than raw SQL, less magic than ORM.
+
+## Comparison
+
+| Tool | Best for | Trade-off |
+|---|---|---|
+| GORM | full ORM, relationships, hooks | more magic, less SQL control |
+| Bun | SQL-first ORM | still an ORM layer |
+| sqlc | type-safe code from hand-written SQL | requires SQL files and generation step |
+| squirrel/goqu | dynamic query building | no struct-driven INSERT/UPDATE/scan helpers |
+| norm | struct-driven SQL generation with manual execution | PostgreSQL-focused, not a full ORM |
 
 ## Table of contents
 
+- [Why?](#why)
+- [Comparison](#comparison)
 - [Install](#install)
 - [Quick start](#quick-start)
+- [Examples](#examples)
 - [Core concepts](#core-concepts)
 - [Field and table naming](#field-and-table-naming)
 - [Struct tags](#struct-tags)
@@ -93,6 +130,25 @@ func main() {
     _, _ = pool.Exec(ctx, sql, args...)
 }
 ```
+
+## Examples
+
+Runnable, self-contained examples live in [`examples/`](examples). Each one is
+an independent module wired to a throwaway PostgreSQL container — just:
+
+```shell
+cd examples/<name>
+docker compose up -d
+go run .
+```
+
+| Example | Shows |
+|---------|-------|
+| [`pgx_crud`](examples/pgx_crud) | Full CRUD cycle over a pgx pool |
+| [`dynamic_filters`](examples/dynamic_filters) | Runtime `WHERE` building with `BuildConditions` |
+| [`joins`](examples/joins) | Explicit and FK-driven (`Auto`) joins |
+| [`migration_sync`](examples/migration_sync) | `Sync`, `Diff` and `CreateTableSQL` |
+| [`json_fields`](examples/json_fields) | Struct/map fields as `jsonb` and `->>` queries |
 
 ## Core concepts
 
