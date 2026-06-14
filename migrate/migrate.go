@@ -1,8 +1,13 @@
-// Package migrate creates and alters PostgreSQL tables to match registered
-// norm models.
+// Package migrate creates and alters database tables to match registered
+// norm models. The target dialect is taken from the [norm.Config] — PostgreSQL
+// (default) and SQLite are supported.
 //
 // Use [Sync] for safe development migrations (CREATE TABLE + ADD COLUMN only).
 // Use [Diff] to generate a full SQL diff for review before applying to production.
+//
+// SQLite note: ALTER COLUMN (type / NOT NULL changes) is not available, so
+// [Diff] reports only added and dropped columns for SQLite; ADD COLUMN cannot
+// add UNIQUE or NOT NULL-without-default columns.
 //
 //	mig := migrate.New(db, orm)
 //	mig.Sync(ctx)              // dev: create tables, add columns
@@ -24,14 +29,15 @@ import (
 // Migrate compares registered norm models against the database schema
 // and generates or executes DDL statements to bring them in sync.
 type Migrate struct {
-	db   *sql.DB
-	norm *norm.Norm
+	db     *sql.DB
+	norm   *norm.Norm
+	schema schemaDialect
 }
 
 // New creates a new Migrate instance.
 // db may be nil if you only need SQL generation methods ([CreateTableSQL]).
 func New(db *sql.DB, n *norm.Norm) *Migrate {
-	return &Migrate{db: db, norm: n}
+	return &Migrate{db: db, norm: n, schema: schemaFor(n.GetConfig().Dialect)}
 }
 
 // dbColumn represents an existing column in the database.
@@ -44,28 +50,12 @@ type dbColumn struct {
 	fkRef      string // referenced table name, empty if not FK
 }
 
-// ── Go → PostgreSQL type mapping ────────────────────────────────────────────
+// ── Go → SQL type mapping ────────────────────────────────────────────────────
 
-var kindToPg = map[reflect.Kind]string{
-	reflect.Int:     "integer",
-	reflect.Int8:    "smallint",
-	reflect.Int16:   "smallint",
-	reflect.Int32:   "integer",
-	reflect.Int64:   "bigint",
-	reflect.Uint:    "integer",
-	reflect.Uint8:   "smallint",
-	reflect.Uint16:  "integer",
-	reflect.Uint32:  "bigint",
-	reflect.Uint64:  "bigint",
-	reflect.Float32: "real",
-	reflect.Float64: "double precision",
-	reflect.Bool:    "boolean",
-	reflect.String:  "text",
-}
-
-// pgType returns the PostgreSQL type for a field.
-// Priority: dbType tag > IsJSON > kind mapping > "text".
-func (m *Migrate) pgType(f *norm.Field) string {
+// columnType returns the column type for a field, using the configured
+// dialect's scalar mapping.
+// Priority: dbType tag > time > JSON > []byte > map/slice > string > scalar kind.
+func (m *Migrate) columnType(f *norm.Field) string {
 	if dbType, ok := f.Tag("dbType"); ok {
 		return dbType
 	}
@@ -86,21 +76,37 @@ func (m *Migrate) pgType(f *norm.Field) string {
 	}
 
 	if t == reflect.TypeOf([]byte(nil)) {
-		return "bytea"
+		return m.schema.blobType()
 	}
 
 	if t.Kind() == reflect.Map || t.Kind() == reflect.Slice {
 		return cfg.DefaultJSON
 	}
 
-	if pgType, ok := kindToPg[t.Kind()]; ok {
-		if t.Kind() == reflect.String {
-			return cfg.DefaultString
-		}
-		return pgType
+	if t.Kind() == reflect.String {
+		return cfg.DefaultString
 	}
 
-	return "text"
+	if st, ok := m.schema.scalarType(t.Kind()); ok {
+		return st
+	}
+
+	return cfg.DefaultString
+}
+
+// specFor builds a columnSpec for ALTER TABLE ADD COLUMN rendering.
+func (m *Migrate) specFor(f *norm.Field) columnSpec {
+	c := columnSpec{name: f.DbName(), colType: m.columnType(f)}
+	_, c.notNull = f.Tag("notnull")
+	if def, ok := f.Tag("default"); ok {
+		c.def = def
+	}
+	_, c.unique = f.Tag("unique")
+	if fkTable, ok := f.Tag("fk"); ok {
+		c.fkTable = strcase.ToSnake(fkTable)
+		c.fkPK = m.resolvePK(c.fkTable)
+	}
+	return c
 }
 
 // normalizeType maps PostgreSQL type aliases to a canonical form for comparison.
@@ -159,7 +165,7 @@ func (m *Migrate) CreateTableSQL(table string) string {
 	var fks []string
 
 	for _, f := range fields {
-		col := f.DbName() + " " + m.pgType(f)
+		col := f.DbName() + " " + m.columnType(f)
 
 		_, isPK := f.Tag("pk")
 		_, notNull := f.Tag("notnull")
@@ -203,34 +209,10 @@ func (m *Migrate) CreateTableSQL(table string) string {
 		table, strings.Join(cols, ",\n    "))
 }
 
-// addColumnSQL returns an ALTER TABLE ADD COLUMN statement.
+// addColumnSQL returns an ALTER TABLE ADD COLUMN statement, rendered for the
+// configured dialect.
 func (m *Migrate) addColumnSQL(table string, f *norm.Field) string {
-	col := f.DbName() + " " + m.pgType(f)
-
-	_, notNull := f.Tag("notnull")
-	if notNull {
-		if defVal, ok := f.Tag("default"); ok {
-			col += " NOT NULL DEFAULT " + defVal
-		} else {
-			col += " NOT NULL"
-		}
-	} else if defVal, ok := f.Tag("default"); ok {
-		col += " DEFAULT " + defVal
-	}
-
-	if _, ok := f.Tag("unique"); ok {
-		col += " UNIQUE"
-	}
-
-	if fkTable, ok := f.Tag("fk"); ok {
-		refTable := strcase.ToSnake(fkTable)
-		refPK := m.resolvePK(refTable)
-		if refPK != "" {
-			col += fmt.Sprintf(" REFERENCES %s(%s)", refTable, refPK)
-		}
-	}
-
-	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s;", table, col)
+	return m.schema.addColumn(table, m.specFor(f))
 }
 
 // ── Sync ────────────────────────────────────────────────────────────────────
@@ -240,7 +222,7 @@ func (m *Migrate) addColumnSQL(table string, f *norm.Field) string {
 // use in development without risk of data loss.
 func (m *Migrate) Sync(ctx context.Context) error {
 	for _, table := range m.norm.Tables() {
-		exists, err := m.tableExists(ctx, table)
+		exists, err := m.schema.tableExists(ctx, m.db, table)
 		if err != nil {
 			return err
 		}
@@ -253,7 +235,7 @@ func (m *Migrate) Sync(ctx context.Context) error {
 			continue
 		}
 
-		existingCols, err := m.queryColumns(ctx, table)
+		existingCols, err := m.schema.queryColumns(ctx, m.db, table)
 		if err != nil {
 			return err
 		}
@@ -287,7 +269,7 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 	var stmts []string
 
 	for _, table := range m.norm.Tables() {
-		exists, err := m.tableExists(ctx, table)
+		exists, err := m.schema.tableExists(ctx, m.db, table)
 		if err != nil {
 			return "", err
 		}
@@ -299,7 +281,7 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 			continue
 		}
 
-		existingCols, err := m.queryColumns(ctx, table)
+		existingCols, err := m.schema.queryColumns(ctx, m.db, table)
 		if err != nil {
 			return "", err
 		}
@@ -320,9 +302,16 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 				continue
 			}
 
+			// Type and NOT NULL changes require ALTER COLUMN, which SQLite
+			// does not support (it needs a full table rebuild). Skip them for
+			// such dialects.
+			if !m.schema.supportsAlterColumn() {
+				continue
+			}
+
 			// Type mismatch
-			expectedType := m.pgType(f)
-			if normalizeType(existing.dataType) != normalizeType(expectedType) {
+			expectedType := m.columnType(f)
+			if m.schema.normalizeType(existing.dataType) != m.schema.normalizeType(expectedType) {
 				stmts = append(stmts, fmt.Sprintf(
 					"ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
 					table, f.DbName(), expectedType,
@@ -350,137 +339,17 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 		}
 
 		// Columns in DB but not in struct → DROP
-		for _, col := range existingCols {
-			if !expectedSet[col.name] {
-				stmts = append(stmts, fmt.Sprintf(
-					"ALTER TABLE %s DROP COLUMN %s;",
-					table, col.name,
-				))
+		if m.schema.supportsDropColumn() {
+			for _, col := range existingCols {
+				if !expectedSet[col.name] {
+					stmts = append(stmts, fmt.Sprintf(
+						"ALTER TABLE %s DROP COLUMN %s;",
+						table, col.name,
+					))
+				}
 			}
 		}
 	}
 
 	return strings.Join(stmts, "\n"), nil
-}
-
-// ── DB schema queries ───────────────────────────────────────────────────────
-
-func (m *Migrate) tableExists(ctx context.Context, table string) (bool, error) {
-	var exists bool
-	err := m.db.QueryRowContext(ctx,
-		"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name=$1)",
-		table,
-	).Scan(&exists)
-	return exists, err
-}
-
-func (m *Migrate) queryColumns(ctx context.Context, table string) ([]dbColumn, error) {
-	rows, err := m.db.QueryContext(ctx,
-		`SELECT column_name, data_type, is_nullable
-		 FROM information_schema.columns
-		 WHERE table_name=$1
-		 ORDER BY ordinal_position`, table)
-	if err != nil {
-		return nil, fmt.Errorf("query columns for %s: %w", table, err)
-	}
-	defer rows.Close()
-
-	var cols []dbColumn
-	for rows.Next() {
-		var name, dataType, nullable string
-		if err := rows.Scan(&name, &dataType, &nullable); err != nil {
-			return nil, fmt.Errorf("scan column for %s: %w", table, err)
-		}
-		cols = append(cols, dbColumn{
-			name:       name,
-			dataType:   dataType,
-			isNullable: nullable == "YES",
-		})
-	}
-
-	// Merge PK info
-	pkSet, err := m.queryConstraintColumns(ctx, table, "PRIMARY KEY")
-	if err != nil {
-		return nil, err
-	}
-
-	// Merge unique info
-	uniqueSet, err := m.queryConstraintColumns(ctx, table, "UNIQUE")
-	if err != nil {
-		return nil, err
-	}
-
-	// Merge FK info
-	fkMap, err := m.queryForeignKeys(ctx, table)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range cols {
-		if pkSet[cols[i].name] {
-			cols[i].isPK = true
-			cols[i].isNullable = false // PK is always NOT NULL
-		}
-		if uniqueSet[cols[i].name] {
-			cols[i].isUnique = true
-		}
-		if ref, ok := fkMap[cols[i].name]; ok {
-			cols[i].fkRef = ref
-		}
-	}
-
-	return cols, nil
-}
-
-func (m *Migrate) queryConstraintColumns(ctx context.Context, table, constraintType string) (map[string]bool, error) {
-	rows, err := m.db.QueryContext(ctx,
-		`SELECT kcu.column_name
-		 FROM information_schema.table_constraints tc
-		 JOIN information_schema.key_column_usage kcu
-		     ON tc.constraint_name = kcu.constraint_name
-		     AND tc.table_schema = kcu.table_schema
-		 WHERE tc.constraint_type = $1
-		     AND tc.table_name = $2`, constraintType, table)
-	if err != nil {
-		return nil, fmt.Errorf("query %s for %s: %w", constraintType, table, err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]bool)
-	for rows.Next() {
-		var col string
-		if err := rows.Scan(&col); err != nil {
-			return nil, fmt.Errorf("scan %s for %s: %w", constraintType, table, err)
-		}
-		result[col] = true
-	}
-	return result, nil
-}
-
-func (m *Migrate) queryForeignKeys(ctx context.Context, table string) (map[string]string, error) {
-	rows, err := m.db.QueryContext(ctx,
-		`SELECT kcu.column_name, ccu.table_name
-		 FROM information_schema.table_constraints tc
-		 JOIN information_schema.key_column_usage kcu
-		     ON tc.constraint_name = kcu.constraint_name
-		     AND tc.table_schema = kcu.table_schema
-		 JOIN information_schema.constraint_column_usage ccu
-		     ON ccu.constraint_name = tc.constraint_name
-		     AND ccu.table_schema = tc.table_schema
-		 WHERE tc.constraint_type = 'FOREIGN KEY'
-		     AND tc.table_name = $1`, table)
-	if err != nil {
-		return nil, fmt.Errorf("query FK for %s: %w", table, err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]string)
-	for rows.Next() {
-		var col, refTable string
-		if err := rows.Scan(&col, &refTable); err != nil {
-			return nil, fmt.Errorf("scan FK for %s: %w", table, err)
-		}
-		result[col] = refTable
-	}
-	return result, nil
 }

@@ -1,8 +1,12 @@
-// Package gen generates Go struct source code from PostgreSQL database schemas.
+// Package gen generates Go struct source code from database schemas.
+//
+// The package-level [FromDB] and [Gen] use PostgreSQL. For other dialects
+// create a [Generator] with [NewGenerator] (PostgreSQL and SQLite supported).
 //
 // Usage:
 //
-//	results, err := gen.FromDB(ctx, pool, "models", "public")
+//	results, err := gen.FromDB(ctx, pool, "models", "public")     // PostgreSQL
+//	results, err := gen.NewGenerator(norm.SQLite).FromDB(ctx, db, "models", "")
 //	for tableName, source := range results {
 //	    os.WriteFile(tableName+".go", []byte(source), 0644)
 //	}
@@ -15,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/iancoleman/strcase"
+	"github.com/juggle73/norm/v4"
 )
 
 // Col describes a database column for code generation.
@@ -35,10 +40,10 @@ type goTypeInfo struct {
 
 var typeMap = map[string]goTypeInfo{
 	// Integers
-	"smallint": {"int16", "", false},
-	"integer":  {"int", "", false},
-	"bigint":   {"int64", "", false},
-	"serial":   {"int", "", false},
+	"smallint":  {"int16", "", false},
+	"integer":   {"int", "", false},
+	"bigint":    {"int64", "", false},
+	"serial":    {"int", "", false},
 	"bigserial": {"int64", "", false},
 
 	// Floats / Numeric
@@ -85,13 +90,40 @@ var typeMap = map[string]goTypeInfo{
 	"ARRAY": {"[]string", "", true},
 }
 
-// Gen generates Go struct source code from column definitions.
+// Generator generates Go struct source code for a specific SQL dialect.
+// Create one with [NewGenerator]; the zero value is not usable.
+type Generator struct {
+	schema schema
+}
+
+// NewGenerator returns a [Generator] for the given dialect (use
+// [github.com/juggle73/norm/v4.PostgreSQL], [github.com/juggle73/norm/v4.SQLite]).
+//
+//	g := gen.NewGenerator(norm.SQLite)
+//	results, err := g.FromDB(ctx, db, "models", "")
+func NewGenerator(d norm.Dialect) *Generator {
+	return &Generator{schema: schemaFor(d)}
+}
+
+// Gen generates Go struct source code from column definitions, mapping
+// database types according to the generator's dialect.
+func (g *Generator) Gen(packageName, structName string, cols []Col) string {
+	return genStruct(g.schema, packageName, structName, cols)
+}
+
+// Gen generates Go struct source code from column definitions using
+// PostgreSQL type mapping. For other dialects use [NewGenerator].
 func Gen(packageName, structName string, cols []Col) string {
+	return genStruct(postgresGen{}, packageName, structName, cols)
+}
+
+// genStruct renders a Go struct for the given schema dialect.
+func genStruct(sch schema, packageName, structName string, cols []Col) string {
 	imports := make(map[string]bool)
 	structStr := fmt.Sprintf("type %s struct {\n", structName)
 
 	for _, col := range cols {
-		info, ok := typeMap[strings.ToLower(col.DataType)]
+		info, ok := sch.goType(col.DataType)
 		if !ok {
 			continue
 		}
@@ -156,147 +188,35 @@ func buildNormTags(col Col) string {
 	return strings.Join(tags, ",")
 }
 
-// FromDB generates Go struct source code for all tables in the given schema.
-// It accepts *sql.DB — any PostgreSQL driver works (pgx/stdlib, lib/pq, etc.).
+// FromDB generates Go struct source code for all tables in the given schema
+// using PostgreSQL introspection. It accepts *sql.DB — any PostgreSQL driver
+// works (pgx/stdlib, lib/pq, etc.). For other dialects use [NewGenerator].
 func FromDB(ctx context.Context, db *sql.DB, packageName, schemaName string) (map[string]string, error) {
-	rows, err := db.QueryContext(ctx,
-		"SELECT tablename FROM pg_tables WHERE schemaname=$1", schemaName)
+	return fromDB(ctx, db, postgresGen{}, packageName, schemaName)
+}
+
+// FromDB generates Go struct source code for all tables in the given schema,
+// introspecting the database according to the generator's dialect.
+//
+// For SQLite the schemaName argument is ignored.
+func (g *Generator) FromDB(ctx context.Context, db *sql.DB, packageName, schemaName string) (map[string]string, error) {
+	return fromDB(ctx, db, g.schema, packageName, schemaName)
+}
+
+func fromDB(ctx context.Context, db *sql.DB, sch schema, packageName, schemaName string) (map[string]string, error) {
+	tables, err := sch.listTables(ctx, db, schemaName)
 	if err != nil {
-		return nil, fmt.Errorf("query tables: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
 
-	var tableName string
 	res := make(map[string]string)
-
-	for rows.Next() {
-		err = rows.Scan(&tableName)
-		if err != nil {
-			return nil, fmt.Errorf("scan table name: %w", err)
-		}
-
-		cols, err := queryColumns(ctx, db, tableName)
+	for _, tableName := range tables {
+		cols, err := sch.queryColumns(ctx, db, tableName)
 		if err != nil {
 			return nil, err
 		}
-
-		res[tableName] = Gen(packageName, strcase.ToCamel(tableName), cols)
+		res[tableName] = genStruct(sch, packageName, strcase.ToCamel(tableName), cols)
 	}
 
 	return res, nil
-}
-
-// queryColumns fetches column metadata, PK, unique, and FK info for a table.
-func queryColumns(ctx context.Context, db *sql.DB, tableName string) ([]Col, error) {
-	// Columns
-	colRows, err := db.QueryContext(ctx,
-		`SELECT column_name, is_nullable, data_type
-		 FROM information_schema.columns
-		 WHERE table_name=$1
-		 ORDER BY ordinal_position`, tableName)
-	if err != nil {
-		return nil, fmt.Errorf("query columns for %s: %w", tableName, err)
-	}
-	defer colRows.Close()
-
-	var cols []Col
-	for colRows.Next() {
-		var name, nullable, dataType string
-		if err := colRows.Scan(&name, &nullable, &dataType); err != nil {
-			return nil, fmt.Errorf("scan column for %s: %w", tableName, err)
-		}
-		cols = append(cols, Col{
-			Name:       name,
-			IsNullable: nullable == "YES",
-			DataType:   dataType,
-		})
-	}
-
-	// Primary keys
-	pkSet, err := queryConstraintColumns(ctx, db, tableName, "PRIMARY KEY")
-	if err != nil {
-		return nil, err
-	}
-
-	// Unique constraints
-	uniqueSet, err := queryConstraintColumns(ctx, db, tableName, "UNIQUE")
-	if err != nil {
-		return nil, err
-	}
-
-	// Foreign keys
-	fkMap, err := queryForeignKeys(ctx, db, tableName)
-	if err != nil {
-		return nil, err
-	}
-
-	// Merge constraint info into columns
-	for i := range cols {
-		if pkSet[cols[i].Name] {
-			cols[i].IsPK = true
-		}
-		if uniqueSet[cols[i].Name] {
-			cols[i].IsUnique = true
-		}
-		if ref, ok := fkMap[cols[i].Name]; ok {
-			cols[i].FK = ref
-		}
-	}
-
-	return cols, nil
-}
-
-// queryConstraintColumns returns a set of column names for the given constraint type.
-func queryConstraintColumns(ctx context.Context, db *sql.DB, tableName, constraintType string) (map[string]bool, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT kcu.column_name
-		 FROM information_schema.table_constraints tc
-		 JOIN information_schema.key_column_usage kcu
-		     ON tc.constraint_name = kcu.constraint_name
-		     AND tc.table_schema = kcu.table_schema
-		 WHERE tc.constraint_type = $1
-		     AND tc.table_name = $2`, constraintType, tableName)
-	if err != nil {
-		return nil, fmt.Errorf("query %s for %s: %w", constraintType, tableName, err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]bool)
-	for rows.Next() {
-		var col string
-		if err := rows.Scan(&col); err != nil {
-			return nil, fmt.Errorf("scan %s for %s: %w", constraintType, tableName, err)
-		}
-		result[col] = true
-	}
-	return result, nil
-}
-
-// queryForeignKeys returns a map of column_name → referenced_table_name.
-func queryForeignKeys(ctx context.Context, db *sql.DB, tableName string) (map[string]string, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT kcu.column_name, ccu.table_name
-		 FROM information_schema.table_constraints tc
-		 JOIN information_schema.key_column_usage kcu
-		     ON tc.constraint_name = kcu.constraint_name
-		     AND tc.table_schema = kcu.table_schema
-		 JOIN information_schema.constraint_column_usage ccu
-		     ON ccu.constraint_name = tc.constraint_name
-		     AND ccu.table_schema = tc.table_schema
-		 WHERE tc.constraint_type = 'FOREIGN KEY'
-		     AND tc.table_name = $1`, tableName)
-	if err != nil {
-		return nil, fmt.Errorf("query FK for %s: %w", tableName, err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]string)
-	for rows.Next() {
-		var col, refTable string
-		if err := rows.Scan(&col, &refTable); err != nil {
-			return nil, fmt.Errorf("scan FK for %s: %w", tableName, err)
-		}
-		result[col] = refTable
-	}
-	return result, nil
 }

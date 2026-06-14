@@ -194,7 +194,7 @@ func TestPgType(t *testing.T) {
 			t.Errorf("field %s.%s not found", tt.table, tt.column)
 			continue
 		}
-		got := mig.pgType(field)
+		got := mig.columnType(field)
 		if got != tt.expected {
 			t.Errorf("pgType(%s.%s) = %q, want %q", tt.table, tt.column, got, tt.expected)
 		}
@@ -255,7 +255,7 @@ func TestPgType_PointerField(t *testing.T) {
 		t.Fatal("expected pointer type for description")
 	}
 
-	got := mig.pgType(descField)
+	got := mig.columnType(descField)
 	if got != "text" {
 		t.Errorf("pgType(*string) = %q, want %q", got, "text")
 	}

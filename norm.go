@@ -21,16 +21,20 @@ type Norm struct {
 
 // Config holds optional configuration for a [Norm] instance.
 type Config struct {
-	// DefaultString sets the PostgreSQL type used for Go string fields
-	// when no dbType tag is specified. Defaults to "text".
+	// DefaultString sets the database type used for Go string fields
+	// when no dbType tag is specified. When empty it defaults to a
+	// dialect-appropriate type ("text" for PostgreSQL, "TEXT" for SQLite).
 	DefaultString string
 
-	// DefaultTime sets the PostgreSQL type used for time.Time fields
-	// when no dbType tag is specified. Defaults to "timestamptz".
+	// DefaultTime sets the database type used for time.Time fields
+	// when no dbType tag is specified. When empty it defaults to a
+	// dialect-appropriate type ("timestamptz" for PostgreSQL,
+	// "TIMESTAMP" for SQLite).
 	DefaultTime string
 
-	// DefaultJSON sets the PostgreSQL type used for struct fields
-	// serialized as JSON when no dbType tag is specified. Defaults to "jsonb".
+	// DefaultJSON sets the database type used for struct fields serialized
+	// as JSON when no dbType tag is specified. When empty it defaults to a
+	// dialect-appropriate type ("jsonb" for PostgreSQL, "TEXT" for SQLite).
 	DefaultJSON string
 
 	// JSONMarshal is the function used to marshal struct fields to JSON.
@@ -63,23 +67,24 @@ func NewNorm(config *Config) *Norm {
 	if config == nil {
 		config = defaultConfig
 	}
+	if config.Dialect == nil {
+		config.Dialect = PostgreSQL
+	}
+	ds, dt, dj := defaultTypes(config.Dialect)
 	if config.DefaultString == "" {
-		config.DefaultString = "text"
+		config.DefaultString = ds
 	}
 	if config.DefaultTime == "" {
-		config.DefaultTime = "timestamptz"
+		config.DefaultTime = dt
 	}
 	if config.DefaultJSON == "" {
-		config.DefaultJSON = "jsonb"
+		config.DefaultJSON = dj
 	}
 	if config.JSONMarshal == nil {
 		config.JSONMarshal = json.Marshal
 	}
 	if config.JSONUnmarshal == nil {
 		config.JSONUnmarshal = json.Unmarshal
-	}
-	if config.Dialect == nil {
-		config.Dialect = PostgreSQL
 	}
 	return &Norm{
 		metas:  make(map[reflect.Type]*modelMeta),

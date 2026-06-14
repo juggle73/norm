@@ -92,6 +92,18 @@ func (mysqlDialect) BuildUpsert(conflictCols, updateCols []string, doNothing boo
 	return " ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", "), nil
 }
 
+// defaultTypes returns the dialect-appropriate default column types for
+// string, time.Time, and JSON fields when no dbType tag or Config override
+// is given.
+func defaultTypes(d Dialect) (str, tm, js string) {
+	switch d {
+	case SQLite:
+		return "TEXT", "TIMESTAMP", "TEXT"
+	default: // PostgreSQL and MySQL keep the historical PostgreSQL defaults
+		return "text", "timestamptz", "jsonb"
+	}
+}
+
 // onConflictClause renders the PostgreSQL/SQLite "ON CONFLICT (...) DO ..."
 // clause shared by both dialects.
 func onConflictClause(conflictCols, updateCols []string, doNothing bool) (string, error) {
