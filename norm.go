@@ -45,6 +45,12 @@ type Config struct {
 	// JSONUnmarshal is the function used to unmarshal JSON into struct fields.
 	// Defaults to [encoding/json.Unmarshal].
 	JSONUnmarshal func(data []byte, v any) error
+
+	// Dialect selects the SQL dialect used when building queries. Defaults to
+	// [PostgreSQL]. Set it to [SQLite] or [MySQL] to target those backends.
+	//
+	//	orm := norm.NewNorm(&norm.Config{Dialect: norm.SQLite})
+	Dialect Dialect
 }
 
 var defaultConfig = &Config{}
@@ -71,6 +77,9 @@ func NewNorm(config *Config) *Norm {
 	}
 	if config.JSONUnmarshal == nil {
 		config.JSONUnmarshal = json.Unmarshal
+	}
+	if config.Dialect == nil {
+		config.Dialect = PostgreSQL
 	}
 	return &Norm{
 		metas:  make(map[reflect.Type]*modelMeta),

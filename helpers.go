@@ -26,8 +26,11 @@ func has(a []string, val string) bool {
 // Binds generates a bind placeholder string in "$1, $2, ..." format
 // for the given number of parameters.
 //
-//	norm.Binds(3) // "$1, $2, $3"
-//	norm.Binds(0) // ""
+// Deprecated: this package-level helper always emits PostgreSQL "$N"
+// placeholders and ignores the configured dialect. Use the dialect-aware
+// [Model.Placeholders] method instead:
+//
+//	m.Placeholders(3) // "$1, $2, $3" or "?, ?, ?" depending on dialect
 func Binds(count int) string {
 	if count == 0 {
 		return ""

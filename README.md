@@ -466,7 +466,7 @@ You can also build UPDATE manually with `UpdateFields` and `BuildWhere`:
 
 ```go
 set, nextBind := m.UpdateFields(norm.Exclude("id"))
-whereStr, whereArgs := norm.BuildWhere(nextBind, "id = ?", user.Id)
+whereStr, whereArgs := m.BuildWhere(nextBind, "id = ?", user.Id)
 
 sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s", m.Table(), set, whereStr)
 args := append(m.Values(norm.Exclude("id")), whereArgs...)
@@ -788,8 +788,10 @@ Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to overr
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `Fields(opts...)` | `string` | Comma-separated column names |
-| `Binds(opts...)` | `string` | Bind placeholders `$1, $2, ...` |
+| `Binds(opts...)` | `string` | Bind placeholders for the model's fields (dialect-aware) |
+| `Placeholders(count)` | `string` | `count` bind placeholders (dialect-aware) |
 | `UpdateFields(opts...)` | `string, int` | SET clause + next bind number |
+| `BuildWhere(startBind, where, args...)` | `string, []any` | Render WHERE with dialect placeholders |
 | `Pointers(opts...)` | `[]any` | Field pointers for Scan |
 | `Values(opts...)` | `[]any` | Field values for Exec |
 | `Pointer(name)` | `any` | Single field pointer |

@@ -137,7 +137,7 @@ func (j *Join) Select() (string, []any, error) {
 	var args []any
 
 	if j.where != nil {
-		whereStr, _ := j.where.Build(1)
+		whereStr, _ := j.base.renderWhere(j.where, 1)
 		sql += " WHERE " + whereStr
 		args = append(args, j.where.Args...)
 	}

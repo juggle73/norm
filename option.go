@@ -57,14 +57,16 @@ func parseWhere(where string, args ...any) *whereOption {
 	}
 }
 
-// Build renders the WHERE clause, replacing each "?" with "$N" starting
-// from startBind. Returns the rendered string and the next bind number.
-func (w *whereOption) Build(startBind int) (string, int) {
+// renderWhere renders w's template, replacing each "?" with the model's
+// configured dialect placeholder starting from startBind. Returns the
+// rendered string and the next bind number. The dialect is read from the
+// model — it is never passed in.
+func (m *modelMeta) renderWhere(w *whereOption, startBind int) (string, int) {
 	result := w.template
 	bind := startBind
 	count := strings.Count(result, "?")
 	for i := 0; i < count; i++ {
-		result = strings.Replace(result, "?", fmt.Sprintf("$%d", bind), 1)
+		result = strings.Replace(result, "?", m.config.Dialect.Placeholder(bind), 1)
 		bind++
 	}
 	return result, bind
@@ -118,8 +120,12 @@ func Prefix(prefix string) prefixOption {
 // "$N" starting from startBind. Returns the rendered string and the args
 // slice unchanged. Useful for building UPDATE queries manually.
 //
+// Deprecated: this package-level helper always emits PostgreSQL "$N"
+// placeholders and ignores the configured dialect. Use the dialect-aware
+// [Model.BuildWhere] method instead:
+//
 //	set, nextBind := m.UpdateFields(norm.Exclude("id"))
-//	whereStr, whereArgs := norm.BuildWhere(nextBind, "id = ?", user.Id)
+//	whereStr, whereArgs := m.BuildWhere(nextBind, "id = ?", user.Id)
 func BuildWhere(startBind int, where string, args ...any) (string, []any) {
 	result := where
 	bind := startBind

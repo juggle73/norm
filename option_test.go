@@ -14,7 +14,7 @@ func TestParseWhere(t *testing.T) {
 
 	t.Run("no placeholders", func(t *testing.T) {
 		w := parseWhere("id=1")
-		s, next := w.Build(1)
+		s, next := newTestModel().renderWhere(w, 1)
 		if s != "id=1" {
 			t.Errorf("got %q", s)
 		}
@@ -25,7 +25,7 @@ func TestParseWhere(t *testing.T) {
 
 	t.Run("single placeholder from 1", func(t *testing.T) {
 		w := parseWhere("name = ?", "John")
-		s, next := w.Build(1)
+		s, next := newTestModel().renderWhere(w, 1)
 		if s != "name = $1" {
 			t.Errorf("got %q", s)
 		}
@@ -39,7 +39,7 @@ func TestParseWhere(t *testing.T) {
 
 	t.Run("multiple placeholders", func(t *testing.T) {
 		w := parseWhere("age > ? AND name = ?", 18, "John")
-		s, next := w.Build(1)
+		s, next := newTestModel().renderWhere(w, 1)
 		if s != "age > $1 AND name = $2" {
 			t.Errorf("got %q", s)
 		}
@@ -50,7 +50,7 @@ func TestParseWhere(t *testing.T) {
 
 	t.Run("start from offset", func(t *testing.T) {
 		w := parseWhere("name = ? AND age > ?", "John", 18)
-		s, next := w.Build(4)
+		s, next := newTestModel().renderWhere(w, 4)
 		if s != "name = $4 AND age > $5" {
 			t.Errorf("got %q", s)
 		}
@@ -129,7 +129,7 @@ func TestComposeOptions(t *testing.T) {
 		if co.Where == nil {
 			t.Fatal("expected where to be set")
 		}
-		s, _ := co.Where.Build(1)
+		s, _ := newTestModel().renderWhere(co.Where, 1)
 		if s != "id = $1" {
 			t.Errorf("got %q", s)
 		}

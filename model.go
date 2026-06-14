@@ -170,7 +170,7 @@ func (m *modelMeta) UpdateFields(opts ...Option) (string, int) {
 
 	res := make([]string, 0, len(ff))
 	for i, f := range ff {
-		res = append(res, fmt.Sprintf("%s=$%d", f.dbName, i+1))
+		res = append(res, fmt.Sprintf("%s=%s", f.dbName, m.config.Dialect.Placeholder(i+1)))
 	}
 
 	return strings.Join(res, ", "), len(ff) + 1
@@ -189,10 +189,38 @@ func (m *modelMeta) Binds(opts ...Option) string {
 
 	res := make([]string, 0, len(ff))
 	for i := range ff {
-		res = append(res, fmt.Sprintf("$%d", i+1))
+		res = append(res, m.config.Dialect.Placeholder(i+1))
 	}
 
 	return strings.Join(res, ", ")
+}
+
+// Placeholders returns a comma-separated list of count bind placeholders
+// rendered for the model's dialect ("$1, $2, $3" for PostgreSQL, "?, ?, ?"
+// for SQLite/MySQL). Returns "" when count <= 0.
+//
+//	m.Placeholders(3) // "$1, $2, $3"
+func (m *modelMeta) Placeholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	res := make([]string, count)
+	for i := 0; i < count; i++ {
+		res[i] = m.config.Dialect.Placeholder(i + 1)
+	}
+	return strings.Join(res, ", ")
+}
+
+// BuildWhere renders a WHERE clause string, replacing each "?" with the
+// model's dialect placeholder starting from startBind. Returns the rendered
+// string and the args slice unchanged. Useful for building UPDATE queries
+// manually alongside [modelMeta.UpdateFields].
+//
+//	set, nextBind := m.UpdateFields(norm.Exclude("id"))
+//	whereStr, whereArgs := m.BuildWhere(nextBind, "id = ?", user.Id)
+func (m *modelMeta) BuildWhere(startBind int, where string, args ...any) (string, []any) {
+	s, _ := m.renderWhere(&whereOption{template: where, Args: args}, startBind)
+	return s, args
 }
 
 // Pointers returns a slice of pointers to the bound struct's fields,
@@ -289,7 +317,7 @@ func (m *Model) Select(opts ...Option) (string, []any, error) {
 	var args []any
 
 	if co.Where != nil {
-		whereStr, _ := co.Where.Build(1)
+		whereStr, _ := m.renderWhere(co.Where, 1)
 		sql += " WHERE " + whereStr
 		args = append(args, co.Where.Args...)
 	}
@@ -328,7 +356,7 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 
 	for i, f := range ff {
 		cols = append(cols, f.dbName)
-		binds = append(binds, fmt.Sprintf("$%d", i+1))
+		binds = append(binds, m.config.Dialect.Placeholder(i+1))
 		val := m.val.FieldByName(f.name).Interface()
 		if f.IsJSON() {
 			b, err := m.config.JSONMarshal(val)
@@ -387,10 +415,9 @@ func (m *modelMeta) conflictSQL(c *ConflictOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	clause := fmt.Sprintf(" ON CONFLICT (%s)", strings.Join(targets, ", "))
 
 	if c.doNothing {
-		return clause + " DO NOTHING", nil
+		return m.config.Dialect.BuildUpsert(targets, nil, true)
 	}
 
 	if len(c.updateColumns) == 0 {
@@ -400,11 +427,7 @@ func (m *modelMeta) conflictSQL(c *ConflictOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sets := make([]string, len(updates))
-	for i, col := range updates {
-		sets[i] = fmt.Sprintf("%s = EXCLUDED.%s", col, col)
-	}
-	return clause + " DO UPDATE SET " + strings.Join(sets, ", "), nil
+	return m.config.Dialect.BuildUpsert(targets, updates, false)
 }
 
 // resolveColumns maps each name (any field-name format) to its db column name,
@@ -447,7 +470,7 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 	vals := make([]any, 0, len(ff))
 
 	for i, f := range ff {
-		setCols = append(setCols, fmt.Sprintf("%s=$%d", f.dbName, i+1))
+		setCols = append(setCols, fmt.Sprintf("%s=%s", f.dbName, m.config.Dialect.Placeholder(i+1)))
 		val := m.val.FieldByName(f.name).Interface()
 		if f.IsJSON() {
 			b, err := m.config.JSONMarshal(val)
@@ -463,7 +486,7 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 	sql := fmt.Sprintf("UPDATE %s SET %s", m.table, strings.Join(setCols, ", "))
 
 	if co.Where != nil {
-		whereStr, _ := co.Where.Build(len(ff) + 1)
+		whereStr, _ := m.renderWhere(co.Where, len(ff)+1)
 		sql += " WHERE " + whereStr
 		vals = append(vals, co.Where.Args...)
 	}
@@ -493,7 +516,7 @@ func (m *Model) Delete(opts ...Option) (string, []any, error) {
 	var args []any
 
 	if co.Where != nil {
-		whereStr, _ := co.Where.Build(1)
+		whereStr, _ := m.renderWhere(co.Where, 1)
 		sql += " WHERE " + whereStr
 		args = append(args, co.Where.Args...)
 	}
@@ -512,6 +535,9 @@ func (m *Model) Delete(opts ...Option) (string, []any, error) {
 func (m *modelMeta) returningSQL(returning []string) (string, error) {
 	if len(returning) == 0 {
 		return "", nil
+	}
+	if !m.config.Dialect.SupportsReturning() {
+		return "", errors.New("Returning: dialect does not support RETURNING")
 	}
 	ret := make([]string, 0, len(returning))
 	for _, name := range returning {
@@ -588,7 +614,8 @@ func (m *modelMeta) FieldByName(name string) (*Field, bool) {
 // (e.g. "RETURNING id, name"). Fields is a comma-separated list of field
 // names in any format (struct name, camelCase, or db name).
 // Returns empty string if fields is empty.
-// Panics if a field is not found — this is a programmer error.
+// Panics if a field is not found or the dialect does not support RETURNING —
+// these are programmer errors.
 //
 //	m.Returning("Id")          // "RETURNING id"
 //	m.Returning("Id, Email")   // "RETURNING id, email"
@@ -596,6 +623,10 @@ func (m *modelMeta) Returning(fields string) string {
 	fields = strings.TrimSpace(fields)
 	if fields == "" {
 		return ""
+	}
+
+	if !m.config.Dialect.SupportsReturning() {
+		panic("Returning: dialect does not support RETURNING")
 	}
 
 	m.mut.RLock()

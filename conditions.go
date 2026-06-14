@@ -167,10 +167,11 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 				pfx = globalPrefix
 			}
 			dbField := pfx + f.dbName + suffix
+			ph := m.config.Dialect.Placeholder(len(values))
 			if v.op == "=" {
-				conditions = append(conditions, fmt.Sprintf("%s=$%d", dbField, len(values)))
+				conditions = append(conditions, fmt.Sprintf("%s=%s", dbField, ph))
 			} else {
-				conditions = append(conditions, fmt.Sprintf("%s %s $%d", dbField, v.op, len(values)))
+				conditions = append(conditions, fmt.Sprintf("%s %s %s", dbField, v.op, ph))
 			}
 
 		case condIn:
@@ -186,7 +187,7 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 			placeholders := make([]string, len(v.values))
 			for i, val := range v.values {
 				values = append(values, val)
-				placeholders[i] = fmt.Sprintf("$%d", len(values))
+				placeholders[i] = m.config.Dialect.Placeholder(len(values))
 			}
 			conditions = append(conditions, fmt.Sprintf("%s%s%s IN (%s)",
 				pfx, f.dbName, suffix, strings.Join(placeholders, ", ")))
