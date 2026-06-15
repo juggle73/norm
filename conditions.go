@@ -166,7 +166,7 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 			if pfx == "" {
 				pfx = globalPrefix
 			}
-			dbField := pfx + f.dbName + suffix
+			dbField := pfx + m.quote(f.dbName) + suffix
 			ph := m.config.Dialect.Placeholder(len(values))
 			if v.op == "=" {
 				conditions = append(conditions, fmt.Sprintf("%s=%s", dbField, ph))
@@ -190,7 +190,7 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 				placeholders[i] = m.config.Dialect.Placeholder(len(values))
 			}
 			conditions = append(conditions, fmt.Sprintf("%s%s%s IN (%s)",
-				pfx, f.dbName, suffix, strings.Join(placeholders, ", ")))
+				pfx, m.quote(f.dbName), suffix, strings.Join(placeholders, ", ")))
 
 		case condIsNull:
 			p, fieldName, suffix := parseFieldParts(v.field)
@@ -203,9 +203,9 @@ func (m *modelMeta) BuildConditions(conds ...Cond) ([]string, []any) {
 				pfx = globalPrefix
 			}
 			if v.isNull {
-				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NULL", pfx, f.dbName, suffix))
+				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NULL", pfx, m.quote(f.dbName), suffix))
 			} else {
-				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NOT NULL", pfx, f.dbName, suffix))
+				conditions = append(conditions, fmt.Sprintf("%s%s%s IS NOT NULL", pfx, m.quote(f.dbName), suffix))
 			}
 		}
 	}

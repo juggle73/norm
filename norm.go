@@ -55,6 +55,16 @@ type Config struct {
 	//
 	//	orm := norm.NewNorm(&norm.Config{Dialect: norm.SQLite})
 	Dialect Dialect
+
+	// QuoteIdentifiers, when true, wraps every table and column name that norm
+	// generates in the dialect's quoting characters (double quotes for
+	// PostgreSQL/SQLite, backticks for MySQL). This lets you use reserved words
+	// (e.g. a table named "order") as identifiers.
+	//
+	// It defaults to false to preserve the historical unquoted output. Raw
+	// fragments you write yourself (such as [Where] templates) are not
+	// rewritten; clauses norm renders from field names (such as [Order]) are.
+	QuoteIdentifiers bool
 }
 
 var defaultConfig = &Config{}

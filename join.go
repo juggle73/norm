@@ -128,10 +128,10 @@ func (j *Join) Select() (string, []any, error) {
 		allFields = append(allFields, j.collectFields(je.model)...)
 	}
 
-	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(allFields, ", "), j.base.Table())
+	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(allFields, ", "), j.base.quote(j.base.Table()))
 
 	for _, je := range j.joins {
-		sql += fmt.Sprintf(" %s %s ON %s", je.jType, je.model.Table(), je.on)
+		sql += fmt.Sprintf(" %s %s ON %s", je.jType, je.model.quote(je.model.Table()), je.on)
 	}
 
 	var args []any
@@ -196,7 +196,7 @@ func (j *Join) resolveFK(m *Model) string {
 				if len(em.pk) != 1 {
 					panic(fmt.Sprintf("Auto: referenced model %q must have exactly one PK field", em.table))
 				}
-				on := fmt.Sprintf("%s.%s = %s.%s", m.table, f.dbName, em.table, em.pk[0])
+				on := fmt.Sprintf("%s.%s = %s.%s", m.quote(m.table), m.quote(f.dbName), em.quote(em.table), em.quote(em.pk[0]))
 				matches = append(matches, on)
 			}
 		}
@@ -216,7 +216,7 @@ func (j *Join) resolveFK(m *Model) string {
 				if len(m.pk) != 1 {
 					panic(fmt.Sprintf("Auto: referenced model %q must have exactly one PK field", m.table))
 				}
-				on := fmt.Sprintf("%s.%s = %s.%s", em.table, f.dbName, m.table, m.pk[0])
+				on := fmt.Sprintf("%s.%s = %s.%s", em.quote(em.table), em.quote(f.dbName), m.quote(m.table), m.quote(m.pk[0]))
 				matches = append(matches, on)
 			}
 		}
@@ -240,7 +240,7 @@ func (j *Join) collectFields(m *Model) []string {
 
 	res := make([]string, 0, len(m.fields))
 	for _, f := range m.fields {
-		res = append(res, m.table+"."+f.dbName)
+		res = append(res, m.quote(m.table)+"."+m.quote(f.dbName))
 	}
 	return res
 }

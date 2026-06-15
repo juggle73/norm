@@ -137,6 +137,29 @@ func (m *modelMeta) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 	return res, co
 }
 
+// quote wraps a table or column identifier in the dialect's quoting
+// characters when [Config.QuoteIdentifiers] is enabled; otherwise it returns
+// the name unchanged. Must not be applied to user-supplied raw fragments
+// (Where templates, dot prefixes, JSON accessors).
+func (m *modelMeta) quote(name string) string {
+	if m.config.QuoteIdentifiers {
+		return m.config.Dialect.QuoteIdentifier(name)
+	}
+	return name
+}
+
+// quoteAll applies quote to each identifier in names, returning a new slice.
+func (m *modelMeta) quoteAll(names []string) []string {
+	if !m.config.QuoteIdentifiers {
+		return names
+	}
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = m.config.Dialect.QuoteIdentifier(n)
+	}
+	return out
+}
+
 // Fields returns a comma-separated list of column names in snake_case.
 // Supports [Exclude], [Fields], and [Prefix] options.
 //
@@ -151,7 +174,7 @@ func (m *modelMeta) Fields(opts ...Option) string {
 
 	res := make([]string, 0, len(ff))
 	for _, f := range ff {
-		res = append(res, co.Prefix+f.dbName)
+		res = append(res, co.Prefix+m.quote(f.dbName))
 	}
 
 	return strings.Join(res, ", ")
@@ -170,7 +193,7 @@ func (m *modelMeta) UpdateFields(opts ...Option) (string, int) {
 
 	res := make([]string, 0, len(ff))
 	for i, f := range ff {
-		res = append(res, fmt.Sprintf("%s=%s", f.dbName, m.config.Dialect.Placeholder(i+1)))
+		res = append(res, fmt.Sprintf("%s=%s", m.quote(f.dbName), m.config.Dialect.Placeholder(i+1)))
 	}
 
 	return strings.Join(res, ", "), len(ff) + 1
@@ -309,10 +332,10 @@ func (m *Model) Select(opts ...Option) (string, []any, error) {
 
 	cols := make([]string, 0, len(ff))
 	for _, f := range ff {
-		cols = append(cols, co.Prefix+f.dbName)
+		cols = append(cols, co.Prefix+m.quote(f.dbName))
 	}
 
-	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), m.table)
+	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), m.quote(m.table))
 
 	var args []any
 
@@ -355,7 +378,7 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	vals := make([]any, 0, len(ff))
 
 	for i, f := range ff {
-		cols = append(cols, f.dbName)
+		cols = append(cols, m.quote(f.dbName))
 		binds = append(binds, m.config.Dialect.Placeholder(i+1))
 		val := m.val.FieldByName(f.name).Interface()
 		if f.IsJSON() {
@@ -370,7 +393,7 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 	}
 
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		m.table,
+		m.quote(m.table),
 		strings.Join(cols, ", "),
 		strings.Join(binds, ", "),
 	)
@@ -415,6 +438,7 @@ func (m *modelMeta) conflictSQL(c *ConflictOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	targets = m.quoteAll(targets)
 
 	if c.doNothing {
 		return m.config.Dialect.BuildUpsert(targets, nil, true)
@@ -427,7 +451,7 @@ func (m *modelMeta) conflictSQL(c *ConflictOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return m.config.Dialect.BuildUpsert(targets, updates, false)
+	return m.config.Dialect.BuildUpsert(targets, m.quoteAll(updates), false)
 }
 
 // resolveColumns maps each name (any field-name format) to its db column name,
@@ -470,7 +494,7 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 	vals := make([]any, 0, len(ff))
 
 	for i, f := range ff {
-		setCols = append(setCols, fmt.Sprintf("%s=%s", f.dbName, m.config.Dialect.Placeholder(i+1)))
+		setCols = append(setCols, fmt.Sprintf("%s=%s", m.quote(f.dbName), m.config.Dialect.Placeholder(i+1)))
 		val := m.val.FieldByName(f.name).Interface()
 		if f.IsJSON() {
 			b, err := m.config.JSONMarshal(val)
@@ -483,7 +507,7 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 		}
 	}
 
-	sql := fmt.Sprintf("UPDATE %s SET %s", m.table, strings.Join(setCols, ", "))
+	sql := fmt.Sprintf("UPDATE %s SET %s", m.quote(m.table), strings.Join(setCols, ", "))
 
 	if co.Where != nil {
 		whereStr, _ := m.renderWhere(co.Where, len(ff)+1)
@@ -511,7 +535,7 @@ func (m *Model) Delete(opts ...Option) (string, []any, error) {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
-	sql := fmt.Sprintf("DELETE FROM %s", m.table)
+	sql := fmt.Sprintf("DELETE FROM %s", m.quote(m.table))
 
 	var args []any
 
@@ -546,7 +570,7 @@ func (m *modelMeta) returningSQL(returning []string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("Returning: unknown field %q", name)
 		}
-		ret = append(ret, field.dbName)
+		ret = append(ret, m.quote(field.dbName))
 	}
 	return " RETURNING " + strings.Join(ret, ", "), nil
 }
@@ -581,7 +605,7 @@ func (m *modelMeta) orderBySQL(orderBy string) string {
 			panic(fmt.Sprintf("OrderBy: unknown field %q", fieldName))
 		}
 
-		res = append(res, field.dbName+" "+direction)
+		res = append(res, m.quote(field.dbName)+" "+direction)
 	}
 
 	return strings.Join(res, ", ")
@@ -643,7 +667,7 @@ func (m *modelMeta) Returning(fields string) string {
 		if !ok {
 			panic(fmt.Sprintf("Returning: unknown field %q", name))
 		}
-		res = append(res, field.dbName)
+		res = append(res, m.quote(field.dbName))
 	}
 
 	if len(res) == 0 {

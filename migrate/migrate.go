@@ -40,6 +40,17 @@ func New(db *sql.DB, n *norm.Norm) *Migrate {
 	return &Migrate{db: db, norm: n, schema: schemaFor(n.GetConfig().Dialect)}
 }
 
+// quote wraps a table or column identifier in the dialect's quoting
+// characters when norm's [norm.Config.QuoteIdentifiers] is enabled; otherwise
+// it returns the name unchanged.
+func (m *Migrate) quote(name string) string {
+	cfg := m.norm.GetConfig()
+	if cfg.QuoteIdentifiers {
+		return cfg.Dialect.QuoteIdentifier(name)
+	}
+	return name
+}
+
 // dbColumn represents an existing column in the database.
 type dbColumn struct {
 	name       string
@@ -96,15 +107,18 @@ func (m *Migrate) columnType(f *norm.Field) string {
 
 // specFor builds a columnSpec for ALTER TABLE ADD COLUMN rendering.
 func (m *Migrate) specFor(f *norm.Field) columnSpec {
-	c := columnSpec{name: f.DbName(), colType: m.columnType(f)}
+	c := columnSpec{name: m.quote(f.DbName()), colType: m.columnType(f)}
 	_, c.notNull = f.Tag("notnull")
 	if def, ok := f.Tag("default"); ok {
 		c.def = def
 	}
 	_, c.unique = f.Tag("unique")
 	if fkTable, ok := f.Tag("fk"); ok {
-		c.fkTable = strcase.ToSnake(fkTable)
-		c.fkPK = m.resolvePK(c.fkTable)
+		table := strcase.ToSnake(fkTable)
+		if pk := m.resolvePK(table); pk != "" {
+			c.fkTable = m.quote(table)
+			c.fkPK = m.quote(pk)
+		}
 	}
 	return c
 }
@@ -165,7 +179,7 @@ func (m *Migrate) CreateTableSQL(table string) string {
 	var fks []string
 
 	for _, f := range fields {
-		col := f.DbName() + " " + m.columnType(f)
+		col := m.quote(f.DbName()) + " " + m.columnType(f)
 
 		_, isPK := f.Tag("pk")
 		_, notNull := f.Tag("notnull")
@@ -183,7 +197,7 @@ func (m *Migrate) CreateTableSQL(table string) string {
 		}
 
 		if isPK {
-			pks = append(pks, f.DbName())
+			pks = append(pks, m.quote(f.DbName()))
 		}
 
 		if fkTable, ok := f.Tag("fk"); ok {
@@ -192,7 +206,7 @@ func (m *Migrate) CreateTableSQL(table string) string {
 			if refPK != "" {
 				fks = append(fks, fmt.Sprintf(
 					"FOREIGN KEY (%s) REFERENCES %s(%s)",
-					f.DbName(), refTable, refPK,
+					m.quote(f.DbName()), m.quote(refTable), m.quote(refPK),
 				))
 			}
 		}
@@ -206,13 +220,13 @@ func (m *Migrate) CreateTableSQL(table string) string {
 	cols = append(cols, fks...)
 
 	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n    %s\n);",
-		table, strings.Join(cols, ",\n    "))
+		m.quote(table), strings.Join(cols, ",\n    "))
 }
 
 // addColumnSQL returns an ALTER TABLE ADD COLUMN statement, rendered for the
 // configured dialect.
 func (m *Migrate) addColumnSQL(table string, f *norm.Field) string {
-	return m.schema.addColumn(table, m.specFor(f))
+	return m.schema.addColumn(m.quote(table), m.specFor(f))
 }
 
 // ── Sync ────────────────────────────────────────────────────────────────────
@@ -314,7 +328,7 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 			if m.schema.normalizeType(existing.dataType) != m.schema.normalizeType(expectedType) {
 				stmts = append(stmts, fmt.Sprintf(
 					"ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
-					table, f.DbName(), expectedType,
+					m.quote(table), m.quote(f.DbName()), expectedType,
 				))
 			}
 
@@ -328,12 +342,12 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 			if wantNotNull && existing.isNullable {
 				stmts = append(stmts, fmt.Sprintf(
 					"ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;",
-					table, f.DbName(),
+					m.quote(table), m.quote(f.DbName()),
 				))
 			} else if !wantNotNull && !existing.isNullable && !existing.isPK {
 				stmts = append(stmts, fmt.Sprintf(
 					"ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;",
-					table, f.DbName(),
+					m.quote(table), m.quote(f.DbName()),
 				))
 			}
 		}
@@ -344,7 +358,7 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 				if !expectedSet[col.name] {
 					stmts = append(stmts, fmt.Sprintf(
 						"ALTER TABLE %s DROP COLUMN %s;",
-						table, col.name,
+						m.quote(table), m.quote(col.name),
 					))
 				}
 			}
