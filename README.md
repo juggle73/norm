@@ -46,6 +46,7 @@ norm solves that middle layer: less boilerplate than raw SQL, less magic than OR
 - [Quick start](#quick-start)
 - [Examples](#examples)
 - [Core concepts](#core-concepts)
+- [Dialects](#dialects)
 - [Field and table naming](#field-and-table-naming)
 - [Struct tags](#struct-tags)
 - [Embedded structs](#embedded-structs)
@@ -163,11 +164,13 @@ go run .
 orm := norm.NewNorm(nil) // default config
 
 orm := norm.NewNorm(&norm.Config{
-    DefaultString: "varchar",      // default: "text"
-    DefaultTime:   "timestamp",    // default: "timestamptz"
-    DefaultJSON:   "json",         // default: "jsonb"
-    JSONMarshal:   sonic.Marshal,  // default: encoding/json
-    JSONUnmarshal: sonic.Unmarshal,
+    Dialect:          norm.SQLite,   // default: norm.PostgreSQL (see Dialects)
+    QuoteIdentifiers: true,          // default: false
+    DefaultString:    "varchar",     // dialect-appropriate default
+    DefaultTime:      "timestamp",   // dialect-appropriate default
+    DefaultJSON:      "json",        // dialect-appropriate default
+    JSONMarshal:      sonic.Marshal, // default: encoding/json
+    JSONUnmarshal:    sonic.Unmarshal,
 })
 ```
 
@@ -193,6 +196,53 @@ orm.AddModel(&User{}, "app_users") // table name = "app_users"
 ```
 
 Without `AddModel`, `M()` auto-generates the table name from the struct name in snake_case (`User` -> `user`, `UserProfile` -> `user_profile`).
+
+## Dialects
+
+norm targets **PostgreSQL** (default), **SQLite** and **MySQL**. Select the dialect on the `Norm` instance — it flows through query building, the `migrate` package and the `gen` package:
+
+```go
+orm := norm.NewNorm(&norm.Config{Dialect: norm.SQLite}) // or norm.MySQL
+```
+
+### Capability matrix
+
+| Capability | PostgreSQL | SQLite | MySQL |
+|---|---|---|---|
+| Bind placeholders | `$1, $2` | `?` | `?` |
+| `RETURNING` | ✅ | ✅ (≥ 3.35) | ❌ — use `LastInsertId()` |
+| Upsert syntax | `ON CONFLICT … DO UPDATE SET col = EXCLUDED.col` | same as PostgreSQL | `ON DUPLICATE KEY UPDATE col = VALUES(col)` |
+| Upsert conflict target | honored | honored | ignored¹ |
+| `migrate` ALTER COLUMN | `ALTER COLUMN` | not supported² | `MODIFY COLUMN` |
+| Identifier quote char | `"name"` | `"name"` | `` `name` `` |
+| Default string / time / json | `text` / `timestamptz` / `jsonb` | `TEXT` / `TIMESTAMP` / `TEXT` | `varchar(255)` / `datetime` / `json` |
+
+¹ MySQL's `ON DUPLICATE KEY UPDATE` fires on any unique-key conflict; the conflict-target columns are accepted for API parity but not emitted.
+² SQLite needs a full table rebuild for type / NOT NULL changes, so `migrate.Diff` reports only added and dropped columns; `ADD COLUMN` cannot add UNIQUE or NOT NULL-without-default columns.
+
+### Generated keys on MySQL
+
+MySQL has no `RETURNING` — asking for it returns an error (or panics on `Model.Returning`). Read the generated key from the driver's `Result` instead:
+
+```go
+m, _ := orm.M(&user)
+sql, vals, _ := m.Insert(norm.Exclude("id")) // INSERT INTO user (...) VALUES (?, ?)
+res, err := db.ExecContext(ctx, sql, vals...)
+id, _ := res.LastInsertId()
+```
+
+Declare the auto-increment column with a `dbType` tag: `norm:"pk,dbType=INT AUTO_INCREMENT"` (MySQL) or `norm:"pk,dbType=serial"` (PostgreSQL). norm does not add auto-increment automatically for any dialect.
+
+### Quoting identifiers
+
+By default norm emits identifiers unquoted. Set `QuoteIdentifiers: true` to wrap every table and column name norm generates in the dialect's quote character — this lets you use reserved words (e.g. a table named `order`) as identifiers:
+
+```go
+orm := norm.NewNorm(&norm.Config{Dialect: norm.MySQL, QuoteIdentifiers: true})
+// INSERT INTO `order` (`name`) VALUES (?)
+```
+
+Raw fragments you write yourself (`Where` templates, `JOIN ... ON` clauses) are **not** rewritten; clauses norm renders from field names (columns, `Order`, upsert, `RETURNING`) are.
 
 ## Field and table naming
 
@@ -701,13 +751,17 @@ for tableName, source := range results {
 }
 ```
 
-`FromDB` accepts `*sql.DB` — any PostgreSQL driver works (lib/pq, pgx/stdlib, etc.).
+`FromDB` accepts `*sql.DB` — any PostgreSQL driver works (lib/pq, pgx/stdlib, etc.). For SQLite or MySQL use a dialect generator:
+
+```go
+results, err := gen.NewGenerator(norm.MySQL).FromDB(ctx, db, "models", "")
+```
 
 Generated structs include norm tags (`pk`, `notnull`, `unique`, `fk=...`) detected from database constraints.
 
 ## Migrations
 
-Automatically create and alter tables based on your Go structs. Lives in the `migrate` subpackage:
+Automatically create and alter tables based on your Go structs. Lives in the `migrate` subpackage and follows the configured [dialect](#dialects) (PostgreSQL, SQLite, MySQL):
 
 ```go
 import "github.com/juggle73/norm/v4/migrate"
