@@ -491,24 +491,30 @@ func (mysqlSchema) supportsDropColumn() bool  { return true }
 func (mysqlSchema) normalizeType(t string) string {
 	t = strings.ToLower(strings.TrimSpace(t))
 	if i := strings.IndexByte(t, '('); i >= 0 {
-		t = strings.TrimSpace(t[:i])
+		t = t[:i]
 	}
-	t = strings.TrimSpace(strings.TrimSuffix(t, "unsigned"))
-	switch t {
+	// Keep only the leading type word, dropping modifiers and attributes such
+	// as "unsigned", "auto_increment", "precision" and "varying" so a model
+	// type like "INT AUTO_INCREMENT" matches the introspected "int".
+	fields := strings.Fields(t)
+	if len(fields) == 0 {
+		return ""
+	}
+	switch fields[0] {
 	case "integer", "int", "int4":
 		return "int"
 	case "bool", "boolean", "tinyint":
 		return "tinyint"
-	case "double precision", "double", "float8":
+	case "double", "float8":
 		return "double"
 	case "float", "real", "float4":
 		return "float"
-	case "character varying", "varchar", "character", "char":
+	case "character", "varchar", "char":
 		return "varchar"
 	case "datetime", "timestamp":
 		return "datetime"
 	default:
-		return t
+		return fields[0]
 	}
 }
 
