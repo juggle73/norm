@@ -4,9 +4,10 @@ Runnable, self-contained examples. Each directory is an independent Go module
 that uses the local copy of norm via a `replace` directive, so you can run them
 straight from this checkout.
 
-Every example needs a PostgreSQL instance. Each directory ships its own
-`docker-compose.yml` that starts Postgres on `localhost:5432` with database
-`norm` (user/password `norm`/`norm`).
+Most examples need a PostgreSQL instance and ship their own `docker-compose.yml`
+that starts Postgres on `localhost:5432` with database `norm` (user/password
+`norm`/`norm`). The [`sqlite`](sqlite) example is the exception — it uses the
+pure-Go SQLite driver and needs no server, so `go run .` works on its own.
 
 ## Run any example
 
@@ -39,3 +40,4 @@ with the `DATABASE_URL` environment variable.
 | [`joins`](joins) | Querying across tables with `NewJoin` and FK-driven `Auto` joins. |
 | [`migration_sync`](migration_sync) | `migrate.Sync`, `Diff` and `CreateTableSQL` against a live database. |
 | [`json_fields`](json_fields) | Struct and map fields stored as `jsonb`, plus `->>` JSON queries. |
+| [`sqlite`](sqlite) | Targeting a non-PostgreSQL dialect: `Dialect: norm.SQLite`, `migrate.Sync`, the CRUD/UPSERT cycle and `QuoteIdentifiers`. No server needed (pure-Go driver). |
