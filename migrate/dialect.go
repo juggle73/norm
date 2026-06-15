@@ -30,6 +30,10 @@ type schemaDialect interface {
 	scalarType(reflect.Kind) (string, bool)
 	// blobType returns the column type for []byte fields.
 	blobType() string
+	// arrayType returns the column type for a slice whose element has the given
+	// kind, and whether the dialect has a native array type for it. Dialects
+	// without array support return ("", false), and the slice is stored as JSON.
+	arrayType(elem reflect.Kind) (string, bool)
 	// normalizeType canonicalizes a type name for Diff comparison.
 	normalizeType(string) string
 	// addColumn renders a full "ALTER TABLE ... ADD COLUMN ..." statement.
@@ -90,8 +94,20 @@ func (postgresSchema) scalarType(k reflect.Kind) (string, bool) {
 
 func (postgresSchema) blobType() string              { return "bytea" }
 func (postgresSchema) normalizeType(t string) string { return normalizeType(t) }
-func (postgresSchema) supportsAlterColumn() bool     { return true }
-func (postgresSchema) supportsDropColumn() bool      { return true }
+
+// arrayType maps a slice element kind to a PostgreSQL array type, so a
+// []string field becomes "text[]" — matching how pgx binds Go slices.
+func (s postgresSchema) arrayType(elem reflect.Kind) (string, bool) {
+	if elem == reflect.String {
+		return "text[]", true
+	}
+	if st, ok := s.scalarType(elem); ok {
+		return st + "[]", true
+	}
+	return "", false
+}
+func (postgresSchema) supportsAlterColumn() bool { return true }
+func (postgresSchema) supportsDropColumn() bool  { return true }
 
 func (postgresSchema) addColumn(table string, c columnSpec) string {
 	col := c.name + " " + c.colType
@@ -269,9 +285,10 @@ func (sqliteSchema) scalarType(k reflect.Kind) (string, bool) {
 	return s, ok
 }
 
-func (sqliteSchema) blobType() string          { return "BLOB" }
-func (sqliteSchema) supportsAlterColumn() bool { return false }
-func (sqliteSchema) supportsDropColumn() bool  { return true } // SQLite ≥ 3.35
+func (sqliteSchema) blobType() string                      { return "BLOB" }
+func (sqliteSchema) arrayType(reflect.Kind) (string, bool) { return "", false } // SQLite has no arrays
+func (sqliteSchema) supportsAlterColumn() bool             { return false }
+func (sqliteSchema) supportsDropColumn() bool              { return true } // SQLite ≥ 3.35
 
 // alterColumn is never invoked (supportsAlterColumn is false) — SQLite needs a
 // full table rebuild for type/nullability changes.
@@ -482,9 +499,10 @@ func (mysqlSchema) scalarType(k reflect.Kind) (string, bool) {
 	return s, ok
 }
 
-func (mysqlSchema) blobType() string          { return "BLOB" }
-func (mysqlSchema) supportsAlterColumn() bool { return true }
-func (mysqlSchema) supportsDropColumn() bool  { return true }
+func (mysqlSchema) blobType() string                      { return "BLOB" }
+func (mysqlSchema) arrayType(reflect.Kind) (string, bool) { return "", false } // MySQL has no arrays
+func (mysqlSchema) supportsAlterColumn() bool             { return true }
+func (mysqlSchema) supportsDropColumn() bool              { return true }
 
 // normalizeType canonicalizes a MySQL type for Diff comparison, stripping
 // display width / length and the unsigned suffix.

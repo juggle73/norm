@@ -97,7 +97,20 @@ func (m *Migrate) columnType(f *norm.Field) string {
 		return m.schema.blobType()
 	}
 
-	if t.Kind() == reflect.Map || t.Kind() == reflect.Slice {
+	if t.Kind() == reflect.Slice {
+		elem := t.Elem()
+		if elem.Kind() == reflect.Pointer {
+			elem = elem.Elem()
+		}
+		// Dialects with native arrays (PostgreSQL) get e.g. "text[]"; others
+		// store the slice as JSON, matching how the builder marshals it.
+		if at, ok := m.schema.arrayType(elem.Kind()); ok {
+			return at
+		}
+		return cfg.DefaultJSON
+	}
+
+	if t.Kind() == reflect.Map {
 		return cfg.DefaultJSON
 	}
 

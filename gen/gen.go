@@ -88,8 +88,8 @@ var typeMap = map[string]goTypeInfo{
 	// Binary
 	"bytea": {"[]byte", "", true},
 
-	// Array
-	"ARRAY": {"[]string", "", true},
+	// Array (information_schema reports any array column's data_type as "ARRAY")
+	"array": {"[]string", "", true},
 }
 
 // Generator generates Go struct source code for a specific SQL dialect.
