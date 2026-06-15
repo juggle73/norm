@@ -1,13 +1,20 @@
 // Package migrate creates and alters database tables to match registered
 // norm models. The target dialect is taken from the [norm.Config] — PostgreSQL
-// (default) and SQLite are supported.
+// (default), SQLite and MySQL are supported.
 //
 // Use [Sync] for safe development migrations (CREATE TABLE + ADD COLUMN only).
 // Use [Diff] to generate a full SQL diff for review before applying to production.
 //
-// SQLite note: ALTER COLUMN (type / NOT NULL changes) is not available, so
-// [Diff] reports only added and dropped columns for SQLite; ADD COLUMN cannot
-// add UNIQUE or NOT NULL-without-default columns.
+// Dialect notes:
+//   - SQLite: ALTER COLUMN (type / NOT NULL changes) is not available, so
+//     [Diff] reports only added and dropped columns; ADD COLUMN cannot add
+//     UNIQUE or NOT NULL-without-default columns.
+//   - MySQL: column changes are rendered with MODIFY COLUMN; ADD COLUMN has no
+//     IF NOT EXISTS. Introspection targets the connected database (DATABASE()).
+//
+// PRIMARY KEY auto-increment is not emitted automatically for any dialect —
+// declare it via a dbType tag (e.g. `norm:"pk,dbType=serial"` for PostgreSQL,
+// `norm:"pk,dbType=INT AUTO_INCREMENT"` for MySQL).
 //
 //	mig := migrate.New(db, orm)
 //	mig.Sync(ctx)              // dev: create tables, add columns
@@ -316,40 +323,21 @@ func (m *Migrate) Diff(ctx context.Context) (string, error) {
 				continue
 			}
 
-			// Type and NOT NULL changes require ALTER COLUMN, which SQLite
-			// does not support (it needs a full table rebuild). Skip them for
-			// such dialects.
+			// Type and NOT NULL changes require in-place column alteration,
+			// which SQLite does not support (it needs a full table rebuild).
+			// Skip them for such dialects.
 			if !m.schema.supportsAlterColumn() {
 				continue
 			}
 
-			// Type mismatch
-			expectedType := m.columnType(f)
-			if m.schema.normalizeType(existing.dataType) != m.schema.normalizeType(expectedType) {
-				stmts = append(stmts, fmt.Sprintf(
-					"ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
-					m.quote(table), m.quote(f.DbName()), expectedType,
-				))
-			}
-
-			// NOT NULL changes
 			_, wantNotNull := f.Tag("notnull")
-			_, wantPK := f.Tag("pk")
-			if wantPK {
+			if _, wantPK := f.Tag("pk"); wantPK {
 				wantNotNull = true
 			}
 
-			if wantNotNull && existing.isNullable {
-				stmts = append(stmts, fmt.Sprintf(
-					"ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;",
-					m.quote(table), m.quote(f.DbName()),
-				))
-			} else if !wantNotNull && !existing.isNullable && !existing.isPK {
-				stmts = append(stmts, fmt.Sprintf(
-					"ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;",
-					m.quote(table), m.quote(f.DbName()),
-				))
-			}
+			stmts = append(stmts, m.schema.alterColumn(
+				m.quote(table), m.quote(f.DbName()), m.columnType(f), *existing, wantNotNull,
+			)...)
 		}
 
 		// Columns in DB but not in struct → DROP

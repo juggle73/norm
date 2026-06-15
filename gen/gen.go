@@ -1,12 +1,14 @@
 // Package gen generates Go struct source code from database schemas.
 //
 // The package-level [FromDB] and [Gen] use PostgreSQL. For other dialects
-// create a [Generator] with [NewGenerator] (PostgreSQL and SQLite supported).
+// create a [Generator] with [NewGenerator] (PostgreSQL, SQLite and MySQL
+// supported).
 //
 // Usage:
 //
 //	results, err := gen.FromDB(ctx, pool, "models", "public")     // PostgreSQL
 //	results, err := gen.NewGenerator(norm.SQLite).FromDB(ctx, db, "models", "")
+//	results, err := gen.NewGenerator(norm.MySQL).FromDB(ctx, db, "models", "")
 //	for tableName, source := range results {
 //	    os.WriteFile(tableName+".go", []byte(source), 0644)
 //	}

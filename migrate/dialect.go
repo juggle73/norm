@@ -34,11 +34,17 @@ type schemaDialect interface {
 	normalizeType(string) string
 	// addColumn renders a full "ALTER TABLE ... ADD COLUMN ..." statement.
 	addColumn(table string, c columnSpec) string
-	// supportsAlterColumn reports whether ALTER COLUMN TYPE / SET|DROP NOT NULL
-	// are available (false for SQLite).
+	// supportsAlterColumn reports whether in-place column type / nullability
+	// changes are available (false for SQLite).
 	supportsAlterColumn() bool
 	// supportsDropColumn reports whether DROP COLUMN is available.
 	supportsDropColumn() bool
+
+	// alterColumn returns the DDL statements that bring an existing column to
+	// the desired type and nullability. qtable and qcol are already quoted by
+	// the caller; newType is the raw target column type. Returns nil when no
+	// change is needed. Only called when supportsAlterColumn is true.
+	alterColumn(qtable, qcol, newType string, existing dbColumn, wantNotNull bool) []string
 
 	tableExists(ctx context.Context, db *sql.DB, table string) (bool, error)
 	queryColumns(ctx context.Context, db *sql.DB, table string) ([]dbColumn, error)
@@ -50,6 +56,8 @@ func schemaFor(d norm.Dialect) schemaDialect {
 	switch d {
 	case norm.SQLite:
 		return sqliteSchema{}
+	case norm.MySQL:
+		return mysqlSchema{}
 	default:
 		return postgresSchema{}
 	}
@@ -103,6 +111,22 @@ func (postgresSchema) addColumn(table string, c columnSpec) string {
 		col += fmt.Sprintf(" REFERENCES %s(%s)", c.fkTable, c.fkPK)
 	}
 	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s;", table, col)
+}
+
+func (postgresSchema) alterColumn(qtable, qcol, newType string, existing dbColumn, wantNotNull bool) []string {
+	var stmts []string
+	if normalizeType(existing.dataType) != normalizeType(newType) {
+		stmts = append(stmts, fmt.Sprintf(
+			"ALTER TABLE %s ALTER COLUMN %s TYPE %s;", qtable, qcol, newType))
+	}
+	if wantNotNull && existing.isNullable {
+		stmts = append(stmts, fmt.Sprintf(
+			"ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;", qtable, qcol))
+	} else if !wantNotNull && !existing.isNullable && !existing.isPK {
+		stmts = append(stmts, fmt.Sprintf(
+			"ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;", qtable, qcol))
+	}
+	return stmts
 }
 
 func (postgresSchema) tableExists(ctx context.Context, db *sql.DB, table string) (bool, error) {
@@ -248,6 +272,10 @@ func (sqliteSchema) scalarType(k reflect.Kind) (string, bool) {
 func (sqliteSchema) blobType() string          { return "BLOB" }
 func (sqliteSchema) supportsAlterColumn() bool { return false }
 func (sqliteSchema) supportsDropColumn() bool  { return true } // SQLite ≥ 3.35
+
+// alterColumn is never invoked (supportsAlterColumn is false) — SQLite needs a
+// full table rebuild for type/nullability changes.
+func (sqliteSchema) alterColumn(_, _, _ string, _ dbColumn, _ bool) []string { return nil }
 
 // normalizeType maps SQLite declared types to a canonical affinity-like form.
 func (sqliteSchema) normalizeType(t string) string {
@@ -425,6 +453,169 @@ func sqliteForeignKeys(ctx context.Context, db *sql.DB, table string) (map[strin
 			return nil, fmt.Errorf("scan foreign_key_list for %s: %w", table, err)
 		}
 		result[from] = refTable
+	}
+	return result, nil
+}
+
+// ── MySQL ─────────────────────────────────────────────────────────────────────
+
+type mysqlSchema struct{}
+
+var mysqlKind = map[reflect.Kind]string{
+	reflect.Int:     "INT",
+	reflect.Int8:    "TINYINT",
+	reflect.Int16:   "SMALLINT",
+	reflect.Int32:   "INT",
+	reflect.Int64:   "BIGINT",
+	reflect.Uint:    "INT UNSIGNED",
+	reflect.Uint8:   "TINYINT UNSIGNED",
+	reflect.Uint16:  "SMALLINT UNSIGNED",
+	reflect.Uint32:  "INT UNSIGNED",
+	reflect.Uint64:  "BIGINT UNSIGNED",
+	reflect.Float32: "FLOAT",
+	reflect.Float64: "DOUBLE",
+	reflect.Bool:    "TINYINT(1)",
+}
+
+func (mysqlSchema) scalarType(k reflect.Kind) (string, bool) {
+	s, ok := mysqlKind[k]
+	return s, ok
+}
+
+func (mysqlSchema) blobType() string          { return "BLOB" }
+func (mysqlSchema) supportsAlterColumn() bool { return true }
+func (mysqlSchema) supportsDropColumn() bool  { return true }
+
+// normalizeType canonicalizes a MySQL type for Diff comparison, stripping
+// display width / length and the unsigned suffix.
+func (mysqlSchema) normalizeType(t string) string {
+	t = strings.ToLower(strings.TrimSpace(t))
+	if i := strings.IndexByte(t, '('); i >= 0 {
+		t = strings.TrimSpace(t[:i])
+	}
+	t = strings.TrimSpace(strings.TrimSuffix(t, "unsigned"))
+	switch t {
+	case "integer", "int", "int4":
+		return "int"
+	case "bool", "boolean", "tinyint":
+		return "tinyint"
+	case "double precision", "double", "float8":
+		return "double"
+	case "float", "real", "float4":
+		return "float"
+	case "character varying", "varchar", "character", "char":
+		return "varchar"
+	case "datetime", "timestamp":
+		return "datetime"
+	default:
+		return t
+	}
+}
+
+func (mysqlSchema) addColumn(table string, c columnSpec) string {
+	// MySQL ADD COLUMN has no standard IF NOT EXISTS. Inline REFERENCES is
+	// accepted for parity (MySQL parses but does not enforce a column-level
+	// reference; a separate FOREIGN KEY constraint is needed to enforce it).
+	col := c.name + " " + c.colType
+	if c.notNull {
+		if c.def != "" {
+			col += " NOT NULL DEFAULT " + c.def
+		} else {
+			col += " NOT NULL"
+		}
+	} else if c.def != "" {
+		col += " DEFAULT " + c.def
+	}
+	if c.unique {
+		col += " UNIQUE"
+	}
+	if c.fkTable != "" && c.fkPK != "" {
+		col += fmt.Sprintf(" REFERENCES %s(%s)", c.fkTable, c.fkPK)
+	}
+	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", table, col)
+}
+
+// alterColumn renders MySQL's MODIFY COLUMN, which restates the full column
+// definition (type + nullability) in a single statement.
+func (s mysqlSchema) alterColumn(qtable, qcol, newType string, existing dbColumn, wantNotNull bool) []string {
+	typeChanged := s.normalizeType(existing.dataType) != s.normalizeType(newType)
+	nullChanged := (wantNotNull && existing.isNullable) ||
+		(!wantNotNull && !existing.isNullable && !existing.isPK)
+	if !typeChanged && !nullChanged {
+		return nil
+	}
+	def := newType
+	if wantNotNull {
+		def += " NOT NULL"
+	}
+	return []string{fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s %s;", qtable, qcol, def)}
+}
+
+func (mysqlSchema) tableExists(ctx context.Context, db *sql.DB, table string) (bool, error) {
+	var exists bool
+	err := db.QueryRowContext(ctx,
+		"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?)",
+		table,
+	).Scan(&exists)
+	return exists, err
+}
+
+func (mysqlSchema) queryColumns(ctx context.Context, db *sql.DB, table string) ([]dbColumn, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT column_name, column_type, is_nullable, column_key
+		 FROM information_schema.columns
+		 WHERE table_schema = DATABASE() AND table_name = ?
+		 ORDER BY ordinal_position`, table)
+	if err != nil {
+		return nil, fmt.Errorf("query columns for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	var cols []dbColumn
+	for rows.Next() {
+		var name, dataType, nullable, key string
+		if err := rows.Scan(&name, &dataType, &nullable, &key); err != nil {
+			return nil, fmt.Errorf("scan column for %s: %w", table, err)
+		}
+		cols = append(cols, dbColumn{
+			name:       name,
+			dataType:   dataType,
+			isNullable: nullable == "YES" && key != "PRI",
+			isPK:       key == "PRI",
+			isUnique:   key == "UNI",
+		})
+	}
+
+	fkMap, err := mysqlForeignKeys(ctx, db, table)
+	if err != nil {
+		return nil, err
+	}
+	for i := range cols {
+		if ref, ok := fkMap[cols[i].name]; ok {
+			cols[i].fkRef = ref
+		}
+	}
+	return cols, nil
+}
+
+func mysqlForeignKeys(ctx context.Context, db *sql.DB, table string) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT column_name, referenced_table_name
+		 FROM information_schema.key_column_usage
+		 WHERE table_schema = DATABASE() AND table_name = ?
+		     AND referenced_table_name IS NOT NULL`, table)
+	if err != nil {
+		return nil, fmt.Errorf("query FK for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var col, refTable string
+		if err := rows.Scan(&col, &refTable); err != nil {
+			return nil, fmt.Errorf("scan FK for %s: %w", table, err)
+		}
+		result[col] = refTable
 	}
 	return result, nil
 }

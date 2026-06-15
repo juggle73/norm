@@ -99,7 +99,9 @@ func defaultTypes(d Dialect) (str, tm, js string) {
 	switch d {
 	case SQLite:
 		return "TEXT", "TIMESTAMP", "TEXT"
-	default: // PostgreSQL and MySQL keep the historical PostgreSQL defaults
+	case MySQL:
+		return "varchar(255)", "datetime", "json"
+	default: // PostgreSQL
 		return "text", "timestamptz", "jsonb"
 	}
 }

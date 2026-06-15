@@ -26,6 +26,8 @@ func schemaFor(d norm.Dialect) schema {
 	switch d {
 	case norm.SQLite:
 		return sqliteGen{}
+	case norm.MySQL:
+		return mysqlGen{}
 	default:
 		return postgresGen{}
 	}
@@ -333,6 +335,129 @@ func sqliteForeignKeys(ctx context.Context, db *sql.DB, table string) (map[strin
 			return nil, fmt.Errorf("scan foreign_key_list for %s: %w", table, err)
 		}
 		result[from] = refTable
+	}
+	return result, nil
+}
+
+// ── MySQL ──────────────────────────────────────────────────────────────────────
+
+type mysqlGen struct{}
+
+// goType maps a MySQL declared column type (as returned in COLUMN_TYPE, which
+// includes the display width, e.g. "int(11)", "tinyint(1)") to a Go type.
+func (mysqlGen) goType(dataType string) (goTypeInfo, bool) {
+	t := strings.ToLower(strings.TrimSpace(dataType))
+	// tinyint(1) is the conventional MySQL boolean.
+	if strings.HasPrefix(t, "tinyint(1)") {
+		return goTypeInfo{"bool", "", false}, true
+	}
+	if i := strings.IndexByte(t, '('); i >= 0 {
+		t = strings.TrimSpace(t[:i])
+	}
+	t = strings.TrimSpace(strings.TrimSuffix(t, "unsigned"))
+	switch t {
+	case "bool", "boolean":
+		return goTypeInfo{"bool", "", false}, true
+	case "tinyint":
+		return goTypeInfo{"int8", "", false}, true
+	case "smallint":
+		return goTypeInfo{"int16", "", false}, true
+	case "mediumint", "int", "integer":
+		return goTypeInfo{"int", "", false}, true
+	case "bigint":
+		return goTypeInfo{"int64", "", false}, true
+	case "float":
+		return goTypeInfo{"float32", "", false}, true
+	case "double", "double precision", "real", "decimal", "numeric":
+		return goTypeInfo{"float64", "", false}, true
+	case "date", "datetime", "timestamp", "time", "year":
+		return goTypeInfo{"time.Time", "time", false}, true
+	case "json":
+		return goTypeInfo{"map[string]any", "", true}, true
+	case "blob", "tinyblob", "mediumblob", "longblob", "binary", "varbinary":
+		return goTypeInfo{"[]byte", "", true}, true
+	default: // char, varchar, text variants, enum, set, and anything else
+		return goTypeInfo{"string", "", false}, true
+	}
+}
+
+// listTables introspects the currently connected database (DATABASE());
+// schemaName is ignored, matching MySQL's single-database connection model.
+func (mysqlGen) listTables(ctx context.Context, db *sql.DB, _ string) ([]string, error) {
+	rows, err := db.QueryContext(ctx,
+		"SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")
+	if err != nil {
+		return nil, fmt.Errorf("query tables: %w", err)
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan table name: %w", err)
+		}
+		tables = append(tables, name)
+	}
+	return tables, nil
+}
+
+func (mysqlGen) queryColumns(ctx context.Context, db *sql.DB, table string) ([]Col, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT column_name, column_type, is_nullable, column_key
+		 FROM information_schema.columns
+		 WHERE table_schema = DATABASE() AND table_name = ?
+		 ORDER BY ordinal_position`, table)
+	if err != nil {
+		return nil, fmt.Errorf("query columns for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	var cols []Col
+	for rows.Next() {
+		var name, dataType, nullable, key string
+		if err := rows.Scan(&name, &dataType, &nullable, &key); err != nil {
+			return nil, fmt.Errorf("scan column for %s: %w", table, err)
+		}
+		cols = append(cols, Col{
+			Name:       name,
+			IsNullable: nullable == "YES" && key != "PRI",
+			DataType:   dataType,
+			IsPK:       key == "PRI",
+			IsUnique:   key == "UNI",
+		})
+	}
+
+	fkMap, err := mysqlForeignKeys(ctx, db, table)
+	if err != nil {
+		return nil, err
+	}
+	for i := range cols {
+		if ref, ok := fkMap[cols[i].Name]; ok {
+			cols[i].FK = ref
+		}
+	}
+	return cols, nil
+}
+
+func mysqlForeignKeys(ctx context.Context, db *sql.DB, table string) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT column_name, referenced_table_name
+		 FROM information_schema.key_column_usage
+		 WHERE table_schema = DATABASE() AND table_name = ?
+		     AND referenced_table_name IS NOT NULL`, table)
+	if err != nil {
+		return nil, fmt.Errorf("query FK for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var col, refTable string
+		if err := rows.Scan(&col, &refTable); err != nil {
+			return nil, fmt.Errorf("scan FK for %s: %w", table, err)
+		}
+		result[col] = refTable
 	}
 	return result, nil
 }
