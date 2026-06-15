@@ -6,12 +6,13 @@
 
 **Latest stable: [v4.3.0](https://github.com/juggle73/norm/releases/tag/v4.3.0)**
 
-Lightweight PostgreSQL SQL query helper for Go structs.
+Lightweight SQL query helper for Go structs — PostgreSQL, SQLite and MySQL.
 
 - Not an ORM
 - No hidden database calls
 - No connection management
-- Works with pgx, lib/pq and database/sql
+- Multi-dialect: PostgreSQL (default), SQLite, MySQL — see [Dialects](#dialects)
+- Works with pgx, lib/pq, database/sql and any SQLite/MySQL driver
 - Generates SELECT / INSERT / UPDATE / DELETE SQL from Go structs
 - Handles bind placeholders, field lists, scan pointers and simple migrations
 - 3–6x faster than common Go query builders in pure SQL generation benchmarks
@@ -36,7 +37,7 @@ norm solves that middle layer: less boilerplate than raw SQL, less magic than OR
 | Bun | SQL-first ORM | still an ORM layer |
 | sqlc | type-safe code from hand-written SQL | requires SQL files and generation step |
 | squirrel/goqu | dynamic query building | no struct-driven INSERT/UPDATE/scan helpers |
-| norm | struct-driven SQL generation with manual execution | PostgreSQL-focused, not a full ORM |
+| norm | struct-driven SQL generation with manual execution | multi-dialect, not a full ORM |
 
 ## Table of contents
 

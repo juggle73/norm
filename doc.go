@@ -3,8 +3,13 @@
 // It generates SQL fragments (field lists, bind parameters, WHERE conditions,
 // full SELECT/INSERT/UPDATE/DELETE queries) from struct definitions using
 // reflection. It is not an ORM — it does not execute queries or manage
-// connections. You compose the generated SQL with any PostgreSQL driver (pgx,
-// database/sql, etc.).
+// connections. You compose the generated SQL with any driver and execute it
+// yourself.
+//
+// The target SQL dialect is set on [Config.Dialect]: PostgreSQL (default),
+// SQLite or MySQL. It controls bind placeholders, RETURNING/upsert syntax,
+// identifier quoting and the default column types used by the migrate and gen
+// subpackages.
 //
 // # Quick start
 //
