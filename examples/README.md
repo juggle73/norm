@@ -4,40 +4,50 @@ Runnable, self-contained examples. Each directory is an independent Go module
 that uses the local copy of norm via a `replace` directive, so you can run them
 straight from this checkout.
 
-Most examples need a PostgreSQL instance and ship their own `docker-compose.yml`
-that starts Postgres on `localhost:5432` with database `norm` (user/password
-`norm`/`norm`). The [`sqlite`](sqlite) example is the exception — it uses the
-pure-Go SQLite driver and needs no server, so `go run .` works on its own.
+norm targets **PostgreSQL, SQLite and MySQL** (plus the compatible dialects
+MariaDB, CockroachDB and YugabyteDB). The examples below cover all of them — see
+the [multi-dialect examples](#multi-dialect) in particular.
 
-## Run any example
+## Running
+
+Most examples need a database server and ship their own `docker-compose.yml`.
+Two need nothing — [`sqlite`](sqlite) (pure-Go driver) and
+[`compatible_dialects`](compatible_dialects) (only builds SQL) run on their own:
+
+```shell
+cd examples/<name>
+go run .                 # sqlite / compatible_dialects
+```
+
+For the server-backed examples:
 
 ```shell
 cd examples/<name>
 docker compose up -d
 go run .
+docker compose down -v   # when done
 ```
 
-When you're done:
+The connection string can be overridden with the `DATABASE_URL` environment
+variable. PostgreSQL examples publish port `5432` and MySQL port `3306`; run one
+example per port at a time (or `docker compose down` the previous one).
 
-```shell
-docker compose down -v
-```
+## PostgreSQL examples
 
-The connection string defaults to
-`postgres://norm:norm@localhost:5432/norm?sslmode=disable` and can be overridden
-with the `DATABASE_URL` environment variable.
+| Directory | Shows | Needs |
+|-----------|-------|-------|
+| [`pgx_crud`](pgx_crud) | Full CRUD cycle (INSERT / SELECT / UPDATE / DELETE) over a pgx pool, with `migrate.Sync`. | Postgres |
+| [`upsert`](upsert) | `INSERT ... ON CONFLICT` — `DO NOTHING`, `DO UPDATE`, composite keys, `RETURNING`. | Postgres |
+| [`dynamic_filters`](dynamic_filters) | Building `WHERE` clauses at runtime from optional filters with `BuildConditions`. | Postgres |
+| [`joins`](joins) | Querying across tables with `NewJoin` and FK-driven `Auto` joins. | Postgres |
+| [`migration_sync`](migration_sync) | `migrate.Sync`, `Diff` and `CreateTableSQL` against a live database. | Postgres |
+| [`json_fields`](json_fields) | Struct and map fields stored as `jsonb`, plus `->>` JSON queries. | Postgres |
+| [`pg_arrays`](pg_arrays) | Composite mapping on Postgres: slices → `text[]`/`bigint[]`, map/struct → `jsonb`, `[]byte` → `bytea`, round-tripped through a pgx pool. | Postgres |
 
-> All examples publish Postgres on the same host port `5432`. Run one example at
-> a time, or `docker compose down` the previous one first.
+## Multi-dialect
 
-## Examples
-
-| Directory | Shows |
-|-----------|-------|
-| [`pgx_crud`](pgx_crud) | Full CRUD cycle (INSERT / SELECT / UPDATE / DELETE) over a pgx pool, with `migrate.Sync` to create the table. |
-| [`upsert`](upsert) | `INSERT ... ON CONFLICT` — `DO NOTHING`, `DO UPDATE`, composite keys, `RETURNING`. |
-| [`dynamic_filters`](dynamic_filters) | Building `WHERE` clauses at runtime from optional filters with `BuildConditions`. |
-| [`joins`](joins) | Querying across tables with `NewJoin` and FK-driven `Auto` joins. |
-| [`migration_sync`](migration_sync) | `migrate.Sync`, `Diff` and `CreateTableSQL` against a live database. |
-| [`json_fields`](json_fields) | Struct and map fields stored as `jsonb`, plus `->>` JSON queries. |
-| [`sqlite`](sqlite) | Targeting a non-PostgreSQL dialect: `Dialect: norm.SQLite`, `migrate.Sync`, the CRUD/UPSERT cycle and `QuoteIdentifiers`. No server needed (pure-Go driver). |
+| Directory | Shows | Needs |
+|-----------|-------|-------|
+| [`sqlite`](sqlite) | `Dialect: norm.SQLite` — `migrate.Sync`, CRUD/UPSERT, RETURNING and `QuoteIdentifiers`. | nothing (pure-Go driver) |
+| [`mysql`](mysql) | `Dialect: norm.MySQL` — `migrate.Sync`, CRUD, `LastInsertId` for generated keys (no RETURNING), `ON DUPLICATE KEY UPDATE`. | MySQL |
+| [`compatible_dialects`](compatible_dialects) | The SQL norm generates for one model across all six dialects, side by side — MariaDB matches MySQL, CockroachDB/YugabyteDB match PostgreSQL. | nothing (only builds SQL) |

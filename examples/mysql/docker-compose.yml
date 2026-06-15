@@ -1,0 +1,15 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_USER: norm
+      MYSQL_PASSWORD: norm
+      MYSQL_DATABASE: norm
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-unorm", "-pnorm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
