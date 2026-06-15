@@ -30,6 +30,13 @@ type Dialect interface {
 
 	// QuoteIdentifier quotes a table or column identifier for the dialect.
 	QuoteIdentifier(name string) string
+
+	// NativeComposites reports whether the dialect's typical driver binds Go
+	// composite values (maps and slices) to columns directly. PostgreSQL (via
+	// pgx) encodes maps to jsonb and slices to arrays natively, so norm leaves
+	// them untouched. SQLite and MySQL drivers cannot, so norm JSON-marshals
+	// map and non-[]byte slice fields itself.
+	NativeComposites() bool
 }
 
 // PostgreSQL is the default [Dialect]. It uses "$N" placeholders, supports
@@ -53,6 +60,7 @@ type postgresDialect struct{}
 
 func (postgresDialect) Placeholder(n int) string { return "$" + strconv.Itoa(n) }
 func (postgresDialect) SupportsReturning() bool  { return true }
+func (postgresDialect) NativeComposites() bool   { return true }
 func (postgresDialect) QuoteIdentifier(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
@@ -64,6 +72,7 @@ type sqliteDialect struct{}
 
 func (sqliteDialect) Placeholder(int) string  { return "?" }
 func (sqliteDialect) SupportsReturning() bool { return true }
+func (sqliteDialect) NativeComposites() bool  { return false }
 func (sqliteDialect) QuoteIdentifier(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
@@ -75,6 +84,7 @@ type mysqlDialect struct{}
 
 func (mysqlDialect) Placeholder(int) string  { return "?" }
 func (mysqlDialect) SupportsReturning() bool { return false }
+func (mysqlDialect) NativeComposites() bool  { return false }
 func (mysqlDialect) QuoteIdentifier(s string) string {
 	return "`" + strings.ReplaceAll(s, "`", "``") + "`"
 }

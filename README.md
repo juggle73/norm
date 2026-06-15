@@ -352,6 +352,8 @@ _ = pool.QueryRow(ctx, sql, args...).Scan(m.Pointers()...)
 
 Pointer struct fields (`*Address`) work the same way. `nil` pointers marshal to `null`.
 
+**Maps and slices.** On SQLite and MySQL, `map` and non-`[]byte` `slice` fields are JSON-marshaled by norm too (their drivers cannot bind composite Go values directly). On PostgreSQL they are left to the driver, so pgx can map them to native `jsonb`/array columns — `[]byte` is always treated as binary (`bytea`/`BLOB`), never JSON. See [Dialects](#dialects).
+
 By default `encoding/json` is used. For better performance, plug in a faster codec via `Config`:
 
 ```go

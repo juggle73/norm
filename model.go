@@ -137,6 +137,29 @@ func (m *modelMeta) filteredFields(opts ...Option) ([]*Field, ComposedOptions) {
 	return res, co
 }
 
+// jsonField reports whether the builder should JSON-marshal (and, on scan,
+// unmarshal) a field. Struct fields (except time.Time) are always JSON. Maps
+// and non-[]byte slices are JSON only on dialects whose drivers do not bind
+// composite Go values natively (every dialect except PostgreSQL) — see
+// [Dialect.NativeComposites].
+func (m *modelMeta) jsonField(f *Field) bool {
+	if f.IsJSON() {
+		return true
+	}
+	if m.config.Dialect.NativeComposites() {
+		return false
+	}
+	t := indirectType(f.valType)
+	switch t.Kind() {
+	case reflect.Map:
+		return true
+	case reflect.Slice:
+		return t.Elem().Kind() != reflect.Uint8 // []byte stays binary
+	default:
+		return false
+	}
+}
+
 // quote wraps a table or column identifier in the dialect's quoting
 // characters when [Config.QuoteIdentifiers] is enabled; otherwise it returns
 // the name unchanged. Must not be applied to user-supplied raw fragments
@@ -262,7 +285,7 @@ func (m *Model) Pointers(opts ...Option) []any {
 	res := make([]any, 0, len(ff)+len(co.AddTargets))
 	for _, f := range ff {
 		ptr := m.val.FieldByName(f.name).Addr().Interface()
-		if f.IsJSON() {
+		if m.jsonField(f) {
 			res = append(res, &jsonScanner{target: ptr, unmarshal: m.config.JSONUnmarshal})
 		} else {
 			res = append(res, ptr)
@@ -298,7 +321,7 @@ func (m *Model) Values(opts ...Option) []any {
 	res := make([]any, 0, len(ff))
 	for _, f := range ff {
 		val := m.val.FieldByName(f.name).Interface()
-		if f.IsJSON() {
+		if m.jsonField(f) {
 			b, err := m.config.JSONMarshal(val)
 			if err != nil {
 				panic(fmt.Sprintf("Values: json marshal field %q: %v", f.name, err))
@@ -381,7 +404,7 @@ func (m *Model) Insert(opts ...Option) (string, []any, error) {
 		cols = append(cols, m.quote(f.dbName))
 		binds = append(binds, m.config.Dialect.Placeholder(i+1))
 		val := m.val.FieldByName(f.name).Interface()
-		if f.IsJSON() {
+		if m.jsonField(f) {
 			b, err := m.config.JSONMarshal(val)
 			if err != nil {
 				return "", nil, fmt.Errorf("Insert: json marshal field %q: %w", f.name, err)
@@ -496,7 +519,7 @@ func (m *Model) Update(opts ...Option) (string, []any, error) {
 	for i, f := range ff {
 		setCols = append(setCols, fmt.Sprintf("%s=%s", m.quote(f.dbName), m.config.Dialect.Placeholder(i+1)))
 		val := m.val.FieldByName(f.name).Interface()
-		if f.IsJSON() {
+		if m.jsonField(f) {
 			b, err := m.config.JSONMarshal(val)
 			if err != nil {
 				return "", nil, fmt.Errorf("Update: json marshal field %q: %w", f.name, err)

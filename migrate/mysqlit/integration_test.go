@@ -178,6 +178,62 @@ func TestBuilderRoundTrip(t *testing.T) {
 	}
 }
 
+// CompositeRow has a map and a slice field, which norm JSON-marshals on MySQL.
+type CompositeRow struct {
+	Id      int            `norm:"pk,dbType=INT AUTO_INCREMENT"`
+	Tags    map[string]any `norm:"notnull"`
+	List    []string       `norm:"notnull"`
+	Payload []byte
+}
+
+// TestCompositeRoundTrip proves that map and slice fields survive a full
+// Insert/Select round-trip through the live MySQL driver, while []byte stays
+// raw binary.
+func TestCompositeRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := openMySQL(t)
+	n := newNorm(&CompositeRow{})
+	if err := migrate.New(db, n).Sync(ctx); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	in := CompositeRow{
+		Tags:    map[string]any{"role": "admin", "level": float64(5)},
+		List:    []string{"x", "y", "z"},
+		Payload: []byte{0x01, 0x02, 0x03},
+	}
+	mIn, _ := n.M(&in)
+	sqlStr, vals, err := mIn.Insert(norm.Exclude("id"))
+	if err != nil {
+		t.Fatalf("build insert: %v", err)
+	}
+	res, err := db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		t.Fatalf("exec insert: %v\nsql: %s", err, sqlStr)
+	}
+	id, _ := res.LastInsertId()
+
+	var got CompositeRow
+	mOut, _ := n.M(&got)
+	sqlStr, args, err := mOut.Select(norm.Where("id = ?", id))
+	if err != nil {
+		t.Fatalf("build select: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, sqlStr, args...).Scan(mOut.Pointers()...); err != nil {
+		t.Fatalf("scan: %v\nsql: %s", err, sqlStr)
+	}
+
+	if got.Tags["role"] != "admin" || got.Tags["level"] != float64(5) {
+		t.Errorf("map round-trip mismatch: %v", got.Tags)
+	}
+	if len(got.List) != 3 || got.List[0] != "x" || got.List[2] != "z" {
+		t.Errorf("slice round-trip mismatch: %v", got.List)
+	}
+	if len(got.Payload) != 3 || got.Payload[0] != 0x01 || got.Payload[2] != 0x03 {
+		t.Errorf("payload round-trip mismatch: %v", got.Payload)
+	}
+}
+
 // TestOnDuplicateKey verifies the MySQL upsert path (ON DUPLICATE KEY UPDATE)
 // for both DoUpdate and DoNothing against a unique-key conflict.
 func TestOnDuplicateKey(t *testing.T) {
@@ -232,8 +288,8 @@ func TestGenFromDB(t *testing.T) {
 		Name string `norm:"notnull"`
 	}
 	type Member struct {
-		Id    int `norm:"pk,dbType=INT AUTO_INCREMENT"`
-		OrgId int `norm:"fk=Org,notnull"`
+		Id    int    `norm:"pk,dbType=INT AUTO_INCREMENT"`
+		OrgId int    `norm:"fk=Org,notnull"`
 		Email string `norm:"unique"`
 	}
 	n := newNorm(&Org{}, &Member{})
