@@ -102,16 +102,48 @@ func (mysqlDialect) BuildUpsert(conflictCols, updateCols []string, doNothing boo
 	return " ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", "), nil
 }
 
+// MariaDB targets MariaDB. It behaves like [MySQL] (the two are wire- and
+// SQL-compatible for everything norm generates): "?" placeholders, no
+// RETURNING, "ON DUPLICATE KEY UPDATE" upserts, backtick quoting.
+var MariaDB Dialect = mariaDialect{}
+
+// CockroachDB targets CockroachDB, which speaks the PostgreSQL wire protocol
+// and SQL dialect. It behaves like [PostgreSQL].
+var CockroachDB Dialect = cockroachDialect{}
+
+// YugabyteDB targets YugabyteDB's PostgreSQL-compatible (YSQL) API. It behaves
+// like [PostgreSQL].
+var YugabyteDB Dialect = yugabyteDialect{}
+
+// These compatible dialects embed a base dialect so they inherit its behavior
+// while remaining distinct values (so `cfg.Dialect == MySQL` is false for
+// MariaDB) and leaving room to override a method later.
+type mariaDialect struct{ mysqlDialect }
+type cockroachDialect struct{ postgresDialect }
+type yugabyteDialect struct{ postgresDialect }
+
+// IsMySQLFamily reports whether d is [MySQL] or a MySQL-compatible dialect
+// (such as [MariaDB]). It drives the schema and default-type selection that
+// those dialects share in the migrate and gen subpackages.
+func IsMySQLFamily(d Dialect) bool {
+	switch d.(type) {
+	case mysqlDialect, mariaDialect:
+		return true
+	default:
+		return false
+	}
+}
+
 // defaultTypes returns the dialect-appropriate default column types for
 // string, time.Time, and JSON fields when no dbType tag or Config override
 // is given.
 func defaultTypes(d Dialect) (str, tm, js string) {
-	switch d {
-	case SQLite:
+	switch {
+	case d == SQLite:
 		return "TEXT", "TIMESTAMP", "TEXT"
-	case MySQL:
+	case IsMySQLFamily(d):
 		return "varchar(255)", "datetime", "json"
-	default: // PostgreSQL
+	default: // PostgreSQL, CockroachDB, YugabyteDB
 		return "text", "timestamptz", "jsonb"
 	}
 }

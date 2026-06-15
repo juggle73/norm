@@ -206,6 +206,8 @@ norm targets **PostgreSQL** (default), **SQLite** and **MySQL**. Select the dial
 orm := norm.NewNorm(&norm.Config{Dialect: norm.SQLite}) // or norm.MySQL
 ```
 
+**Compatible dialects.** `norm.MariaDB` behaves like MySQL; `norm.CockroachDB` and `norm.YugabyteDB` behave like PostgreSQL. They are distinct values (so `cfg.Dialect == norm.MySQL` is `false` for MariaDB) but reuse the base dialect's SQL, schema introspection and type mapping.
+
 ### Capability matrix
 
 | Capability | PostgreSQL | SQLite | MySQL |

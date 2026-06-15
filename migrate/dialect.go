@@ -53,12 +53,12 @@ type schemaDialect interface {
 // schemaFor selects the schema dialect matching the configured norm dialect.
 // Unknown dialects fall back to PostgreSQL.
 func schemaFor(d norm.Dialect) schemaDialect {
-	switch d {
-	case norm.SQLite:
+	switch {
+	case d == norm.SQLite:
 		return sqliteSchema{}
-	case norm.MySQL:
+	case norm.IsMySQLFamily(d):
 		return mysqlSchema{}
-	default:
+	default: // PostgreSQL, CockroachDB, YugabyteDB
 		return postgresSchema{}
 	}
 }

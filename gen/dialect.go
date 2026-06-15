@@ -23,12 +23,12 @@ type schema interface {
 // schemaFor selects the gen schema matching the configured norm dialect.
 // Unknown dialects fall back to PostgreSQL.
 func schemaFor(d norm.Dialect) schema {
-	switch d {
-	case norm.SQLite:
+	switch {
+	case d == norm.SQLite:
 		return sqliteGen{}
-	case norm.MySQL:
+	case norm.IsMySQLFamily(d):
 		return mysqlGen{}
-	default:
+	default: // PostgreSQL, CockroachDB, YugabyteDB
 		return postgresGen{}
 	}
 }
