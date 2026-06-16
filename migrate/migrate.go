@@ -148,11 +148,14 @@ func (m *Migrate) specFor(f *norm.Field) columnSpec {
 func normalizeType(t string) string {
 	t = strings.ToLower(strings.TrimSpace(t))
 	switch t {
-	case "int", "int4", "integer":
+	case "int", "int4", "integer", "serial", "serial4":
+		// serial is integer + an auto-increment default; information_schema
+		// reports the column as integer, so normalize them together to avoid a
+		// perpetual Diff for serial primary keys.
 		return "integer"
-	case "int2", "smallint":
+	case "int2", "smallint", "smallserial", "serial2":
 		return "smallint"
-	case "int8", "bigint":
+	case "int8", "bigint", "bigserial", "serial8":
 		return "bigint"
 	case "float4", "real":
 		return "real"

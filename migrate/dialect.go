@@ -354,8 +354,9 @@ func (sqliteSchema) tableExists(ctx context.Context, db *sql.DB, table string) (
 }
 
 func (sqliteSchema) queryColumns(ctx context.Context, db *sql.DB, table string) ([]dbColumn, error) {
-	// table is a validated identifier ([a-zA-Z0-9_]); PRAGMA does not accept
-	// bind parameters, so it is interpolated.
+	// table is a registered model table name, validated to [a-zA-Z0-9_] when the
+	// model is parsed; PRAGMA does not accept bind parameters, so it is
+	// interpolated.
 	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", table))
 	if err != nil {
 		return nil, fmt.Errorf("pragma table_info for %s: %w", table, err)

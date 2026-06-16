@@ -215,11 +215,90 @@ func TestGenFromDB(t *testing.T) {
 	}
 	for _, want := range []string{
 		"type ArrayRow struct {",
-		"Tags []string", // text[] (ARRAY) → []string
+		"Tags []string", // text[] → []string
+		"Nums []int64",  // bigint[] → []int64 (precise element type)
 		`norm:"pk,notnull"`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("source missing %q, got:\n%s", want, src)
 		}
+	}
+}
+
+type Member struct {
+	Id    int    `norm:"pk,dbType=serial"`
+	Email string `norm:"unique,notnull"`
+	Plan  string `norm:"notnull"`
+}
+
+// TestUpsert verifies the PostgreSQL ON CONFLICT path (DoUpdate and DoNothing)
+// against a live database via pgxpool.
+func TestUpsert(t *testing.T) {
+	ctx := context.Background()
+	db, pool := openPG(t)
+	n := newNorm(&Member{})
+	if err := migrate.New(db, n).Sync(ctx); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	insert := func(m Member, opt norm.Option) {
+		mod, _ := n.M(&m)
+		sqlStr, vals, err := mod.Insert(norm.Exclude("id"), opt)
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		if _, err := pool.Exec(ctx, sqlStr, vals...); err != nil {
+			t.Fatalf("exec: %v\nsql: %s", err, sqlStr)
+		}
+	}
+
+	insert(Member{Email: "a@x.io", Plan: "free"}, norm.OnConflict("email").DoUpdate("plan"))
+	insert(Member{Email: "a@x.io", Plan: "pro"}, norm.OnConflict("email").DoUpdate("plan"))
+
+	var plan string
+	if err := pool.QueryRow(ctx, "SELECT plan FROM member WHERE email='a@x.io'").Scan(&plan); err != nil {
+		t.Fatalf("verify update: %v", err)
+	}
+	if plan != "pro" {
+		t.Errorf("DoUpdate did not overwrite plan, got %q", plan)
+	}
+
+	insert(Member{Email: "a@x.io", Plan: "ignored"}, norm.OnConflict("email").DoNothing())
+	if err := pool.QueryRow(ctx, "SELECT plan FROM member WHERE email='a@x.io'").Scan(&plan); err != nil {
+		t.Fatalf("verify nothing: %v", err)
+	}
+	if plan != "pro" {
+		t.Errorf("DoNothing changed the row, got %q", plan)
+	}
+}
+
+// TestDiff verifies Diff against a live PostgreSQL: empty when the schema
+// matches, and DROP COLUMN for an extra column.
+func TestDiff(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openPG(t)
+	n := newNorm(&Member{})
+	mig := migrate.New(db, n)
+	if err := mig.Sync(ctx); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	diff, err := mig.Diff(ctx)
+	if err != nil {
+		t.Fatalf("diff: %v", err)
+	}
+	if strings.TrimSpace(diff) != "" {
+		t.Errorf("expected empty diff for matching schema, got:\n%s", diff)
+	}
+
+	if _, err := db.ExecContext(ctx, "ALTER TABLE member ADD COLUMN legacy text"); err != nil {
+		t.Fatalf("add legacy: %v", err)
+	}
+	diff, err = mig.Diff(ctx)
+	if err != nil {
+		t.Fatalf("diff after add: %v", err)
+	}
+	if !strings.Contains(diff, "DROP COLUMN legacy;") {
+		t.Errorf("expected DROP COLUMN legacy, got:\n%s", diff)
 	}
 }

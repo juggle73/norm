@@ -138,6 +138,9 @@ func IsMySQLFamily(d Dialect) bool {
 // string, time.Time, and JSON fields when no dbType tag or Config override
 // is given.
 func defaultTypes(d Dialect) (str, tm, js string) {
+	// Detection mirrors schemaFor in the migrate/gen packages: SQLite has no
+	// compatible variants (value equality), MySQL has (IsMySQLFamily covers
+	// MariaDB), and the PostgreSQL family is the default branch.
 	switch {
 	case d == SQLite:
 		return "TEXT", "TIMESTAMP", "TEXT"

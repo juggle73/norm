@@ -5,8 +5,8 @@ import (
 )
 
 type CondTestStruct struct {
-	Id     int     `norm:"pk"`
-	Name   string  `norm:"notnull"`
+	Id     int    `norm:"pk"`
+	Name   string `norm:"notnull"`
 	Age    int
 	Active bool
 	Score  float64
@@ -232,6 +232,10 @@ func TestBuildConditions_Multiple(t *testing.T) {
 	}
 }
 
+// TestBuildConditions_UnknownField documents the deliberate lenient behavior:
+// an unknown field is skipped (no condition, no bound value), so partial filter
+// sets can be assembled without pre-validating every field. Unlike OrderBy /
+// Returning, which panic. See BuildConditions doc.
 func TestBuildConditions_UnknownField(t *testing.T) {
 	m := newCondTestModel()
 	conds, vals := m.BuildConditions(Eq("nonexistent", "value"))

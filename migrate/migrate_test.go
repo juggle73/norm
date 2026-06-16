@@ -23,9 +23,9 @@ type Order struct {
 }
 
 type Product struct {
-	Id          int      `norm:"pk"`
-	Name        string   `norm:"notnull"`
-	Price       float64  `norm:"notnull"`
+	Id          int     `norm:"pk"`
+	Name        string  `norm:"notnull"`
+	Price       float64 `norm:"notnull"`
 	Description *string
 	IsActive    bool      `norm:"notnull,default=true"`
 	CreatedAt   time.Time `norm:"notnull"`
@@ -79,7 +79,7 @@ func TestCreateTableSQL_AllTypes(t *testing.T) {
 	assertContains(t, sql, "id integer NOT NULL")
 	assertContains(t, sql, "name text NOT NULL")
 	assertContains(t, sql, "price double precision NOT NULL")
-	assertContains(t, sql, "description text")   // nullable, no NOT NULL
+	assertContains(t, sql, "description text") // nullable, no NOT NULL
 	assertContains(t, sql, "is_active boolean NOT NULL DEFAULT true")
 	assertContains(t, sql, "created_at timestamptz NOT NULL")
 	assertContains(t, sql, "metadata jsonb")
@@ -209,6 +209,9 @@ func TestNormalizeType(t *testing.T) {
 		{"integer", "integer"},
 		{"int4", "integer"},
 		{"int", "integer"},
+		{"serial", "integer"},   // serial → integer (no perpetual Diff)
+		{"bigserial", "bigint"}, // bigserial → bigint
+		{"smallserial", "smallint"},
 		{"bigint", "bigint"},
 		{"int8", "bigint"},
 		{"smallint", "smallint"},

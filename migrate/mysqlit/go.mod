@@ -1,6 +1,6 @@
 module github.com/juggle73/norm/v4/migrate/mysqlit
 
-go 1.26.2
+go 1.25.0
 
 replace github.com/juggle73/norm/v4 => ../..
 

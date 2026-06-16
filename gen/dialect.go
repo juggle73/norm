@@ -37,14 +37,45 @@ func schemaFor(d norm.Dialect) schema {
 
 type postgresGen struct{}
 
-// goType maps a Postgres data_type to a Go type. Unknown types (geometry,
-// tsvector, custom/enum types, etc.) return false and are intentionally
-// skipped by the generator rather than guessed — Postgres is strictly typed,
-// so a wrong guess would be misleading. (SQLite/MySQL fall back to string
-// because their type systems are affinity-based / fully enumerated.)
+// goType maps a Postgres type to a Go type. For arrays it receives the
+// udt_name (e.g. "_int4") supplied by queryColumns and resolves the element
+// type, so int4[] becomes []int rather than a generic []string.
+//
+// Unknown scalar types (geometry, tsvector, custom/enum types, etc.) return
+// false and are intentionally skipped by the generator rather than guessed —
+// Postgres is strictly typed, so a wrong guess would be misleading. (SQLite/
+// MySQL fall back to string because their type systems are affinity-based /
+// fully enumerated.)
 func (postgresGen) goType(dataType string) (goTypeInfo, bool) {
-	info, ok := typeMap[strings.ToLower(dataType)]
+	lower := strings.ToLower(dataType)
+	// Array udt_names are the element type prefixed with "_" (e.g. "_int4").
+	if strings.HasPrefix(lower, "_") {
+		if info, ok := pgArrayElem[lower[1:]]; ok {
+			return info, true
+		}
+		return goTypeInfo{"[]string", "", true}, true // unknown element type
+	}
+	info, ok := typeMap[lower]
 	return info, ok
+}
+
+// pgArrayElem maps a Postgres array element udt_name (without the leading "_")
+// to the Go slice type for that array column.
+var pgArrayElem = map[string]goTypeInfo{
+	"int2":        {"[]int16", "", true},
+	"int4":        {"[]int", "", true},
+	"int8":        {"[]int64", "", true},
+	"float4":      {"[]float32", "", true},
+	"float8":      {"[]float64", "", true},
+	"numeric":     {"[]float64", "", true},
+	"bool":        {"[]bool", "", true},
+	"text":        {"[]string", "", true},
+	"varchar":     {"[]string", "", true},
+	"bpchar":      {"[]string", "", true},
+	"uuid":        {"[]string", "", true},
+	"date":        {"[]time.Time", "time", true},
+	"timestamp":   {"[]time.Time", "time", true},
+	"timestamptz": {"[]time.Time", "time", true},
 }
 
 func (postgresGen) listTables(ctx context.Context, db *sql.DB, schemaName string) ([]string, error) {
@@ -71,7 +102,7 @@ func (postgresGen) listTables(ctx context.Context, db *sql.DB, schemaName string
 
 func (postgresGen) queryColumns(ctx context.Context, db *sql.DB, tableName string) ([]Col, error) {
 	colRows, err := db.QueryContext(ctx,
-		`SELECT column_name, is_nullable, data_type
+		`SELECT column_name, is_nullable, data_type, udt_name
 		 FROM information_schema.columns
 		 WHERE table_name=$1
 		 ORDER BY ordinal_position`, tableName)
@@ -82,9 +113,14 @@ func (postgresGen) queryColumns(ctx context.Context, db *sql.DB, tableName strin
 
 	var cols []Col
 	for colRows.Next() {
-		var name, nullable, dataType string
-		if err := colRows.Scan(&name, &nullable, &dataType); err != nil {
+		var name, nullable, dataType, udtName string
+		if err := colRows.Scan(&name, &nullable, &dataType, &udtName); err != nil {
 			return nil, fmt.Errorf("scan column for %s: %w", tableName, err)
+		}
+		// For arrays, data_type is the generic "ARRAY"; the element type is in
+		// udt_name (e.g. "_int4"), which goType resolves to a precise slice.
+		if dataType == "ARRAY" {
+			dataType = udtName
 		}
 		cols = append(cols, Col{
 			Name:       name,

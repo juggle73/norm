@@ -128,6 +128,33 @@ func TestBuilderUpsert(t *testing.T) {
 	}
 }
 
+// TestBuilderUpsertDoNothing verifies OnConflict DoNothing leaves the row
+// unchanged on a conflict.
+func TestBuilderUpsertDoNothing(t *testing.T) {
+	n, db := setupAccounts(t)
+	seed(t, n, db, Account{Id: 1, Name: "Ann", Active: true, Score: 1,
+		Prefs: Prefs{}, CreatedAt: time.Now()})
+
+	conflict := Account{Id: 1, Name: "Ignored", Active: true, Score: 1,
+		Prefs: Prefs{}, CreatedAt: time.Now()}
+	m, _ := n.M(&conflict)
+	sql, vals, err := m.Insert(norm.OnConflict("id").DoNothing())
+	if err != nil {
+		t.Fatalf("build upsert: %v", err)
+	}
+	if _, err := db.Exec(sql, vals...); err != nil {
+		t.Fatalf("exec upsert: %v\nsql: %s", err, sql)
+	}
+
+	var name string
+	if err := db.QueryRow("SELECT name FROM account WHERE id=1").Scan(&name); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if name != "Ann" {
+		t.Errorf("DoNothing changed the row, got %q", name)
+	}
+}
+
 // TestBuilderDelete verifies m.Delete output removes the live row.
 func TestBuilderDelete(t *testing.T) {
 	n, db := setupAccounts(t)

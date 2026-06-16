@@ -88,11 +88,9 @@ var typeMap = map[string]goTypeInfo{
 	// Binary
 	"bytea": {"[]byte", "", true},
 
-	// Array. information_schema reports every array column's data_type as
-	// "ARRAY" (the element type lives in udt_name, which gen does not read), so
-	// all array columns generate as []string regardless of element type — e.g.
-	// an integer[] column becomes []string. Adjust the field by hand or via a
-	// dbType tag if you need the precise element type.
+	// Array fallback for a literal "ARRAY" data_type. Live introspection
+	// resolves the precise element type from udt_name (see pgArrayElem), so
+	// this is only used when "ARRAY" is passed to the public Gen directly.
 	"array": {"[]string", "", true},
 }
 

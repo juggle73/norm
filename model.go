@@ -308,8 +308,14 @@ func (m *Model) Pointer(name string) any {
 }
 
 // Values returns a slice of field values from the bound struct instance.
-// Struct fields (except time.Time) are marshaled to JSON bytes automatically.
-// Supports [Exclude] and [Fields] options.
+// JSON fields (structs, and maps/slices on non-native dialects) are marshaled
+// to JSON bytes automatically. Supports [Exclude] and [Fields] options.
+//
+// Like [Model.Pointer], Values panics if a field cannot be JSON-encoded — a
+// non-encodable field value is a programmer error. [Model.Insert] and
+// [Model.Update] fold the same marshal failure into their returned error
+// instead, because they have an error return; use those if you prefer an error
+// to a panic.
 //
 //	_, err := pool.Exec(ctx, sql, m.Values(norm.Exclude("id"))...)
 func (m *Model) Values(opts ...Option) []any {

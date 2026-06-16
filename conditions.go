@@ -136,6 +136,13 @@ func parseFieldParts(field string) (prefix, name, suffix string) {
 // Use [Prefix] to add the same prefix to all conditions at once.
 // Use "field->>jsonKey" for JSON field access.
 //
+// A condition whose field is not known to the model is silently skipped (its
+// value is not bound either). This is deliberate: it lets you assemble
+// conditions from optional/partial filters without pre-checking every field.
+// It differs from [modelMeta.OrderBy] and [modelMeta.Returning], which panic
+// on an unknown field. If you need strict validation, check
+// [modelMeta.FieldByName] before building the condition.
+//
 //	conds, vals := m.BuildConditions(
 //	    norm.Eq("u.name", "John"),
 //	    norm.Gte("u.age", 18),
