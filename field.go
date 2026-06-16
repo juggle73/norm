@@ -17,12 +17,6 @@ type Field struct {
 	tagValues map[string]string
 }
 
-// hasTag reports whether the field has the given tag key in its norm tag.
-func (f *Field) hasTag(tag string) bool {
-	_, ok := f.tagValues[tag]
-	return ok
-}
-
 // Tag returns the value of a norm tag key and whether it exists.
 //
 //	val, ok := field.Tag("default") // val="0", ok=true for `norm:"default=0"`
@@ -51,9 +45,13 @@ func (f *Field) Type() reflect.Type {
 	return f.valType
 }
 
-// IsJSON reports whether the field should be marshaled/unmarshaled as JSON.
-// A field is JSON if its underlying type is a struct (but not time.Time).
-// Maps and slices are excluded — database drivers handle them natively.
+// IsJSON reports whether the field's underlying type is a struct (but not
+// time.Time), which norm always marshals/unmarshals as JSON regardless of
+// dialect.
+//
+// Note: maps and non-[]byte slices may ALSO be stored as JSON depending on the
+// dialect (on SQLite/MySQL, whose drivers cannot bind composite Go values),
+// but that decision is dialect-aware and made internally, not by this method.
 func (f *Field) IsJSON() bool {
 	t := indirectType(f.valType)
 	return t.Kind() == reflect.Struct && t != reflect.TypeOf(time.Time{})

@@ -138,22 +138,28 @@ func main() {
 ## Examples
 
 Runnable, self-contained examples live in [`examples/`](examples). Each one is
-an independent module wired to a throwaway PostgreSQL container — just:
+an independent module. Most use a throwaway PostgreSQL (or MySQL) container;
+[`sqlite`](examples/sqlite) and [`compatible_dialects`](examples/compatible_dialects)
+need no server. See [examples/README.md](examples/README.md) for the full list.
 
 ```shell
 cd examples/<name>
-docker compose up -d
+docker compose up -d   # not needed for sqlite / compatible_dialects
 go run .
 ```
 
-| Example | Shows |
-|---------|-------|
-| [`pgx_crud`](examples/pgx_crud) | Full CRUD cycle over a pgx pool |
-| [`upsert`](examples/upsert) | `INSERT ... ON CONFLICT` (UPSERT) |
-| [`dynamic_filters`](examples/dynamic_filters) | Runtime `WHERE` building with `BuildConditions` |
-| [`joins`](examples/joins) | Explicit and FK-driven (`Auto`) joins |
-| [`migration_sync`](examples/migration_sync) | `Sync`, `Diff` and `CreateTableSQL` |
-| [`json_fields`](examples/json_fields) | Struct/map fields as `jsonb` and `->>` queries |
+| Example | Shows | Needs |
+|---------|-------|-------|
+| [`pgx_crud`](examples/pgx_crud) | Full CRUD cycle over a pgx pool | Postgres |
+| [`upsert`](examples/upsert) | `INSERT ... ON CONFLICT` (UPSERT) | Postgres |
+| [`dynamic_filters`](examples/dynamic_filters) | Runtime `WHERE` building with `BuildConditions` | Postgres |
+| [`joins`](examples/joins) | Explicit and FK-driven (`Auto`) joins | Postgres |
+| [`migration_sync`](examples/migration_sync) | `Sync`, `Diff` and `CreateTableSQL` | Postgres |
+| [`json_fields`](examples/json_fields) | Struct/map fields as `jsonb` and `->>` queries | Postgres |
+| [`pg_arrays`](examples/pg_arrays) | Slices → `text[]`/`bigint[]`, map/struct → `jsonb`, via pgxpool | Postgres |
+| [`sqlite`](examples/sqlite) | `Dialect: norm.SQLite`, migrate, CRUD/UPSERT, `QuoteIdentifiers` | nothing |
+| [`mysql`](examples/mysql) | `Dialect: norm.MySQL`, `LastInsertId`, `ON DUPLICATE KEY UPDATE` | MySQL |
+| [`compatible_dialects`](examples/compatible_dialects) | Generated SQL for one model across all six dialects | nothing |
 
 ## Core concepts
 
@@ -295,7 +301,7 @@ type User struct {
 | `notnull` | Add NOT NULL constraint |
 | `default=value` | Set DEFAULT value |
 | `dbName=name` | Override column name (default: snake_case of field name) |
-| `dbType=type` | Override PostgreSQL type |
+| `dbType=type` | Override the column type (verbatim, for the configured dialect) |
 | `fk=ModelName` | Mark as foreign key (accepts any format: `UserType`, `userType`, `user_type`) |
 | `-` | Skip field entirely |
 
@@ -814,7 +820,9 @@ Preview the CREATE TABLE statement for any registered model:
 fmt.Println(mig.CreateTableSQL("user"))
 ```
 
-Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to override:
+Go types are mapped to SQL types automatically. The table below shows the
+**PostgreSQL** mapping (the default); SQLite and MySQL use dialect-appropriate
+types — see the [Dialects](#dialects) matrix. Use the `dbType` tag to override.
 
 | Go type | PostgreSQL type |
 |---------|----------------|
@@ -826,6 +834,7 @@ Go types are mapped to PostgreSQL types automatically. Use `dbType` tag to overr
 | `time.Time` | `timestamptz` |
 | `struct` | `jsonb` |
 | `map[string]any` | `jsonb` |
+| `[]T` (slice) | `T[]` array (e.g. `text[]`); `jsonb` on SQLite/MySQL |
 | `[]byte` | `bytea` |
 
 ## Options reference

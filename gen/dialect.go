@@ -37,6 +37,11 @@ func schemaFor(d norm.Dialect) schema {
 
 type postgresGen struct{}
 
+// goType maps a Postgres data_type to a Go type. Unknown types (geometry,
+// tsvector, custom/enum types, etc.) return false and are intentionally
+// skipped by the generator rather than guessed — Postgres is strictly typed,
+// so a wrong guess would be misleading. (SQLite/MySQL fall back to string
+// because their type systems are affinity-based / fully enumerated.)
 func (postgresGen) goType(dataType string) (goTypeInfo, bool) {
 	info, ok := typeMap[strings.ToLower(dataType)]
 	return info, ok
@@ -57,6 +62,9 @@ func (postgresGen) listTables(ctx context.Context, db *sql.DB, schemaName string
 			return nil, fmt.Errorf("scan table name: %w", err)
 		}
 		tables = append(tables, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate table names: %w", err)
 	}
 	return tables, nil
 }
@@ -84,6 +92,9 @@ func (postgresGen) queryColumns(ctx context.Context, db *sql.DB, tableName strin
 			DataType:   dataType,
 		})
 	}
+	if err := colRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate column for %s: %w", tableName, err)
+	}
 
 	pkSet, err := pgConstraintColumns(ctx, db, tableName, "PRIMARY KEY")
 	if err != nil {
@@ -101,6 +112,7 @@ func (postgresGen) queryColumns(ctx context.Context, db *sql.DB, tableName strin
 	for i := range cols {
 		if pkSet[cols[i].Name] {
 			cols[i].IsPK = true
+			cols[i].IsNullable = false
 		}
 		if uniqueSet[cols[i].Name] {
 			cols[i].IsUnique = true
@@ -135,6 +147,9 @@ func pgConstraintColumns(ctx context.Context, db *sql.DB, tableName, constraintT
 		}
 		result[col] = true
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate %s for %s: %w", constraintType, tableName, err)
+	}
 	return result, nil
 }
 
@@ -162,6 +177,9 @@ func pgForeignKeys(ctx context.Context, db *sql.DB, tableName string) (map[strin
 			return nil, fmt.Errorf("scan FK for %s: %w", tableName, err)
 		}
 		result[col] = refTable
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate FK for %s: %w", tableName, err)
 	}
 	return result, nil
 }
@@ -212,6 +230,9 @@ func (sqliteGen) listTables(ctx context.Context, db *sql.DB, _ string) ([]string
 		}
 		tables = append(tables, name)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate table names: %w", err)
+	}
 	return tables, nil
 }
 
@@ -243,6 +264,9 @@ func (sqliteGen) queryColumns(ctx context.Context, db *sql.DB, table string) ([]
 			DataType:   ctype,
 			IsPK:       pk > 0,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate table_info for %s: %w", table, err)
 	}
 	rows.Close()
 
@@ -289,6 +313,9 @@ func sqliteUniqueColumns(ctx context.Context, db *sql.DB, table string) (map[str
 			uniqueIdx = append(uniqueIdx, name)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate index_list for %s: %w", table, err)
+	}
 	rows.Close()
 
 	result := make(map[string]bool)
@@ -306,6 +333,10 @@ func sqliteUniqueColumns(ctx context.Context, db *sql.DB, table string) (map[str
 				return nil, fmt.Errorf("scan index_info for %s: %w", idx, err)
 			}
 			colNames = append(colNames, cname)
+		}
+		if err := irows.Err(); err != nil {
+			irows.Close()
+			return nil, fmt.Errorf("iterate index_info for %s: %w", idx, err)
 		}
 		irows.Close()
 		if len(colNames) == 1 {
@@ -335,6 +366,9 @@ func sqliteForeignKeys(ctx context.Context, db *sql.DB, table string) (map[strin
 			return nil, fmt.Errorf("scan foreign_key_list for %s: %w", table, err)
 		}
 		result[from] = refTable
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate foreign_key_list for %s: %w", table, err)
 	}
 	return result, nil
 }
@@ -399,6 +433,9 @@ func (mysqlGen) listTables(ctx context.Context, db *sql.DB, _ string) ([]string,
 		}
 		tables = append(tables, name)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate table names: %w", err)
+	}
 	return tables, nil
 }
 
@@ -426,6 +463,9 @@ func (mysqlGen) queryColumns(ctx context.Context, db *sql.DB, table string) ([]C
 			IsPK:       key == "PRI",
 			IsUnique:   key == "UNI",
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate columns for %s: %w", table, err)
 	}
 
 	fkMap, err := mysqlForeignKeys(ctx, db, table)
@@ -458,6 +498,9 @@ func mysqlForeignKeys(ctx context.Context, db *sql.DB, table string) (map[string
 			return nil, fmt.Errorf("scan FK for %s: %w", table, err)
 		}
 		result[col] = refTable
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate FK for %s: %w", table, err)
 	}
 	return result, nil
 }

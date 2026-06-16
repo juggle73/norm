@@ -23,18 +23,20 @@ type Norm struct {
 type Config struct {
 	// DefaultString sets the database type used for Go string fields
 	// when no dbType tag is specified. When empty it defaults to a
-	// dialect-appropriate type ("text" for PostgreSQL, "TEXT" for SQLite).
+	// dialect-appropriate type ("text" for PostgreSQL, "TEXT" for SQLite,
+	// "varchar(255)" for MySQL).
 	DefaultString string
 
 	// DefaultTime sets the database type used for time.Time fields
 	// when no dbType tag is specified. When empty it defaults to a
 	// dialect-appropriate type ("timestamptz" for PostgreSQL,
-	// "TIMESTAMP" for SQLite).
+	// "TIMESTAMP" for SQLite, "datetime" for MySQL).
 	DefaultTime string
 
 	// DefaultJSON sets the database type used for struct fields serialized
 	// as JSON when no dbType tag is specified. When empty it defaults to a
-	// dialect-appropriate type ("jsonb" for PostgreSQL, "TEXT" for SQLite).
+	// dialect-appropriate type ("jsonb" for PostgreSQL, "TEXT" for SQLite,
+	// "json" for MySQL).
 	DefaultJSON string
 
 	// JSONMarshal is the function used to marshal struct fields to JSON.

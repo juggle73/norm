@@ -177,6 +177,9 @@ func (postgresSchema) queryColumns(ctx context.Context, db *sql.DB, table string
 			isNullable: nullable == "YES",
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate columns for %s: %w", table, err)
+	}
 
 	pkSet, err := pgConstraintColumns(ctx, db, table, "PRIMARY KEY")
 	if err != nil {
@@ -229,6 +232,9 @@ func pgConstraintColumns(ctx context.Context, db *sql.DB, table, constraintType 
 		}
 		result[col] = true
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate %s for %s: %w", constraintType, table, err)
+	}
 	return result, nil
 }
 
@@ -256,6 +262,9 @@ func pgForeignKeys(ctx context.Context, db *sql.DB, table string) (map[string]st
 			return nil, fmt.Errorf("scan FK for %s: %w", table, err)
 		}
 		result[col] = refTable
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate FK for %s: %w", table, err)
 	}
 	return result, nil
 }
@@ -373,6 +382,9 @@ func (sqliteSchema) queryColumns(ctx context.Context, db *sql.DB, table string) 
 			isPK:       pk > 0,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate table_info for %s: %w", table, err)
+	}
 	rows.Close()
 
 	uniqueSet, err := sqliteUniqueColumns(ctx, db, table)
@@ -423,6 +435,9 @@ func sqliteUniqueColumns(ctx context.Context, db *sql.DB, table string) (map[str
 			idxs = append(idxs, idx{name: name})
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate index_list for %s: %w", table, err)
+	}
 	rows.Close()
 
 	result := make(map[string]bool)
@@ -440,6 +455,10 @@ func sqliteUniqueColumns(ctx context.Context, db *sql.DB, table string) (map[str
 				return nil, fmt.Errorf("scan index_info for %s: %w", ix.name, err)
 			}
 			colNames = append(colNames, cname)
+		}
+		if err := irows.Err(); err != nil {
+			irows.Close()
+			return nil, fmt.Errorf("iterate index_info for %s: %w", ix.name, err)
 		}
 		irows.Close()
 		// Only single-column unique indexes map to a UNIQUE column constraint.
@@ -470,6 +489,9 @@ func sqliteForeignKeys(ctx context.Context, db *sql.DB, table string) (map[strin
 			return nil, fmt.Errorf("scan foreign_key_list for %s: %w", table, err)
 		}
 		result[from] = refTable
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate foreign_key_list for %s: %w", table, err)
 	}
 	return result, nil
 }
@@ -609,6 +631,9 @@ func (mysqlSchema) queryColumns(ctx context.Context, db *sql.DB, table string) (
 			isUnique:   key == "UNI",
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate columns for %s: %w", table, err)
+	}
 
 	fkMap, err := mysqlForeignKeys(ctx, db, table)
 	if err != nil {
@@ -640,6 +665,9 @@ func mysqlForeignKeys(ctx context.Context, db *sql.DB, table string) (map[string
 			return nil, fmt.Errorf("scan FK for %s: %w", table, err)
 		}
 		result[col] = refTable
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate FK for %s: %w", table, err)
 	}
 	return result, nil
 }

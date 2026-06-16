@@ -61,20 +61,23 @@
 //	unique       — UNIQUE constraint
 //	default=val  — DEFAULT value
 //	dbName=name  — override column name
-//	dbType=type  — override PostgreSQL type
+//	dbType=type  — override the column type (verbatim, for the configured dialect)
 //	fk=Model     — foreign key (accepts CamelCase, camelCase, snake_case)
 //	-            — skip field entirely
 //
 // # Configuration
 //
-// [Config] controls default PostgreSQL types and JSON codec:
+// [Config] selects the dialect and controls default column types, identifier
+// quoting and the JSON codec:
 //
 //	orm := norm.NewNorm(&norm.Config{
-//	    DefaultString: "varchar",      // default: "text"
-//	    DefaultTime:   "timestamp",    // default: "timestamptz"
-//	    DefaultJSON:   "json",         // default: "jsonb"
-//	    JSONMarshal:   sonic.Marshal,  // default: encoding/json
-//	    JSONUnmarshal: sonic.Unmarshal,
+//	    Dialect:          norm.SQLite,   // default: norm.PostgreSQL
+//	    QuoteIdentifiers: true,          // default: false (quote table/column names)
+//	    DefaultString:    "varchar",     // dialect-appropriate default
+//	    DefaultTime:      "timestamp",   // dialect-appropriate default
+//	    DefaultJSON:      "json",        // dialect-appropriate default
+//	    JSONMarshal:      sonic.Marshal, // default: encoding/json
+//	    JSONUnmarshal:    sonic.Unmarshal,
 //	})
 //
 // # Thread safety

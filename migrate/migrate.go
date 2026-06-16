@@ -93,14 +93,15 @@ func (m *Migrate) columnType(f *norm.Field) string {
 		return cfg.DefaultJSON
 	}
 
-	if t == reflect.TypeOf([]byte(nil)) {
-		return m.schema.blobType()
-	}
-
 	if t.Kind() == reflect.Slice {
 		elem := t.Elem()
 		if elem.Kind() == reflect.Pointer {
 			elem = elem.Elem()
+		}
+		// Any byte slice — []byte or a named type like `type Blob []byte` — is
+		// binary, matching the builder, which never JSON-marshals byte slices.
+		if elem.Kind() == reflect.Uint8 {
+			return m.schema.blobType()
 		}
 		// Dialects with native arrays (PostgreSQL) get e.g. "text[]"; others
 		// store the slice as JSON, matching how the builder marshals it.
