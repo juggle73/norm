@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/juggle73/norm/v4)](https://goreportcard.com/report/github.com/juggle73/norm/v4)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Latest stable: [v4.3.0](https://github.com/juggle73/norm/releases/tag/v4.3.0)**
+**Latest stable: [v4.4.0](https://github.com/juggle73/norm/releases/tag/v4.4.0)**
 
 Lightweight SQL query helper for Go structs — PostgreSQL, SQLite and MySQL.
 
